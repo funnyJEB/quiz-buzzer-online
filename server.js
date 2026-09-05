@@ -7,24 +7,21 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 
-// 정적 파일 제공 (public 폴더)
 app.use(express.static(path.join(__dirname, 'public')));
 
-// 기본 접속 시 학생 화면으로 안내
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// 상태 저장소
-let buzzerQueue = [];      // 선착순 누른 목록 [{ id, name, time }]
-let isLocked = true;       // 부저 잠김 여부
-let scores = {};           // { [name]: 점수 }
-let connectedStudents = {};// { [socketId]: name }
-let maxDisplayCount = 10;  // 접수할 최대 선착순 인원수 (교사 설정)
-let currentQuestionScore = 10; // 현재 문제 배점
+let buzzerQueue = [];
+let isLocked = true;
+let scores = {};
+let connectedStudents = {};
+let maxDisplayCount = 10;
+let currentQuestionScore = 10;
 
 io.on('connection', (socket) => {
-  // 교사 화면 접속 시 초기 데이터 전송
+  // 교사 초기 연결
   socket.on('teacher_init', () => {
     socket.emit('state_update', {
       isLocked,
@@ -36,18 +33,16 @@ io.on('connection', (socket) => {
     });
   });
 
-  // 학생 등록 및 재접속 처리
+  // 학생 등록 및 재접속
   socket.on('register_student', (name) => {
     const trimmedName = name.trim();
     socket.studentName = trimmedName;
     connectedStudents[socket.id] = trimmedName;
 
-    // 점수 기록이 없으면 0점으로 신규 생성, 있으면 기존 점수 유지
     if (scores[trimmedName] === undefined) {
       scores[trimmedName] = 0;
     }
 
-    // 학생에게 자신의 점수 및 부저 상태 전송
     socket.emit('score_update', scores[trimmedName]);
     const buzzedIndex = buzzerQueue.findIndex(b => b.name === trimmedName);
     socket.emit('buzzer_state', {
@@ -56,20 +51,16 @@ io.on('connection', (socket) => {
       rank: buzzedIndex !== -1 ? buzzedIndex + 1 : null
     });
 
-    // 교사 화면 접속자 수 갱신
     io.emit('student_list_updated', {
       scores,
       onlineCount: Object.keys(connectedStudents).length
     });
   });
 
-  // 학생 부저 클릭
+  // 부저 클릭
   socket.on('press_buzzer', () => {
     if (isLocked || !socket.studentName) return;
-
-    // 이미 선착순에 든 학생이면 무시
-    const alreadyBuzzed = buzzerQueue.some(b => b.name === socket.studentName);
-    if (alreadyBuzzed) return;
+    if (buzzerQueue.some(b => b.name === socket.studentName)) return;
 
     const rank = buzzerQueue.length + 1;
     buzzerQueue.push({
@@ -79,20 +70,16 @@ io.on('connection', (socket) => {
       rank
     });
 
-    // 본인 기기에 결과 전송
     socket.emit('buzzer_result', { rank, isFirst: rank === 1 });
-
-    // 교사 화면 실시간 순위표 갱신
     io.emit('queue_updated', buzzerQueue);
 
-    // 설정된 인원(예: 5명, 10명)이 다 차면 전체 부저 자동 잠금
     if (buzzerQueue.length >= maxDisplayCount) {
       isLocked = true;
       io.emit('buzzer_state_change', { isLocked: true });
     }
   });
 
-  // [교사 명령] 새 문제 시작 (부저 열기)
+  // 새 문제 시작 (부저 열기)
   socket.on('open_buzzer', (score) => {
     buzzerQueue = [];
     isLocked = false;
@@ -101,43 +88,39 @@ io.on('connection', (socket) => {
     io.emit('buzzer_state_change', { isLocked: false, score: currentQuestionScore });
   });
 
-  // [교사 명령] 수동 부저 잠금
+  // 수동 부저 잠금
   socket.on('lock_buzzer', () => {
     isLocked = true;
     io.emit('buzzer_state_change', { isLocked: true });
   });
 
-  // [교사 명령] 선착순 마감 인원수 변경
+  // 선착순 인원수 설정
   socket.on('set_max_display', (count) => {
     maxDisplayCount = parseInt(count, 10) || 10;
     io.emit('max_display_updated', maxDisplayCount);
   });
 
-  // [교사 명령] 정답 처리 (1위 정답 시 배점 부여 후 자동 잠금)
+  // 정답 판정 (1순위)
   socket.on('judge_first_student', ({ isCorrect, score }) => {
     if (buzzerQueue.length === 0) return;
-    const targetStudent = buzzerQueue[0];
+    const target = buzzerQueue[0];
     const point = parseInt(score, 10);
 
     if (isCorrect) {
-      // 정답: 점수 가산 후 큐 리셋 및 부저 잠금
-      scores[targetStudent.name] = (scores[targetStudent.name] || 0) + point;
+      scores[target.name] = (scores[target.name] || 0) + point;
       isLocked = true;
       io.emit('buzzer_state_change', { isLocked: true });
     } else {
-      // 오답: 페널티(옵션) 후 발언권을 2순위에게 토스 (1순위 제거)
-      buzzerQueue.shift(); // 맨 앞 1순위 제거
-      // 남은 학생들 순위 재계산
-      buzzerQueue.forEach((item, index) => item.rank = index + 1);
+      buzzerQueue.shift();
+      buzzerQueue.forEach((item, idx) => item.rank = idx + 1);
     }
 
-    // 업데이트된 점수 및 큐 전송
     io.emit('scores_updated', scores);
     io.emit('queue_updated', buzzerQueue);
-    sendScoreToStudent(targetStudent.name);
+    sendScoreToStudent(target.name);
   });
 
-  // [교사 명령] 개별 학생 점수 증감 (+ / -)
+  // 개별 점수 조정
   socket.on('manual_score_adjust', ({ name, delta }) => {
     if (scores[name] !== undefined) {
       scores[name] += delta;
@@ -146,7 +129,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  // [교사 명령] 학생 강제 퇴장(Kick)
+  // 개별 학생 강퇴
   socket.on('kick_student', (targetName) => {
     for (const [id, s] of io.of('/').sockets) {
       if (s.studentName === targetName) {
@@ -160,14 +143,28 @@ io.on('connection', (socket) => {
     io.emit('queue_updated', buzzerQueue);
   });
 
-  // [교사 명령] 점수 전체 초기화
+  // 점수만 리셋 (이어하기)
   socket.on('reset_all_scores', () => {
     for (const name in scores) scores[name] = 0;
     io.emit('scores_updated', scores);
     io.emit('all_scores_reset');
+    for (const [id, s] of io.of('/').sockets) {
+      if (s.studentName) s.emit('score_update', 0);
+    }
   });
 
-  // 연결 종료 시 처리
+  // 새 게임 시작 (완전 초기화 및 전체 퇴장)
+  socket.on('start_new_game', () => {
+    scores = {};
+    buzzerQueue = [];
+    isLocked = true;
+    connectedStudents = {};
+    io.emit('force_game_restart');
+    io.emit('scores_updated', scores);
+    io.emit('queue_updated', buzzerQueue);
+    io.emit('buzzer_state_change', { isLocked: true });
+  });
+
   socket.on('disconnect', () => {
     delete connectedStudents[socket.id];
     io.emit('student_list_updated', {
