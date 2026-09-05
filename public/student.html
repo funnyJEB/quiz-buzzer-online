@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>학생용 퀴즈 부저</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #fff; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; justify-content: space-between; min-height: 90vh; box-sizing: border-box; }
+    .card { background: #1e293b; border-radius: 16px; padding: 20px; width: 100%; max-width: 400px; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+    .user-info { display: flex; justify-content: space-between; align-items: center; font-size: 16px; color: #94a3b8; }
+    .score-badge { font-size: 24px; font-weight: bold; color: #38bdf8; }
+    .buzzer-btn { width: 220px; height: 220px; border-radius: 50%; border: 8px solid rgba(255,255,255,0.2); font-size: 32px; font-weight: 900; color: white; cursor: pointer; outline: none; transition: transform 0.05s ease, background-color 0.2s ease; margin: 40px auto; display: flex; align-items: center; justify-content: center; user-select: none; -webkit-tap-highlight-color: transparent; }
+    .btn-ready { background: radial-gradient(circle, #ef4444 0%, #b91c1c 100%); box-shadow: 0 10px 25px rgba(239, 68, 68, 0.5); }
+    .btn-ready:active { transform: scale(0.94); }
+    .btn-disabled { background: #475569; color: #94a3b8; border-color: #334155; cursor: not-allowed; box-shadow: none; }
+    .status-msg { font-size: 18px; font-weight: bold; min-height: 28px; margin-top: 10px; }
+    input[type="text"] { width: 80%; padding: 14px; font-size: 18px; border-radius: 8px; border: 1px solid #475569; background: #334155; color: white; text-align: center; margin: 20px 0; }
+    .join-btn { padding: 12px 24px; font-size: 18px; font-weight: bold; border-radius: 8px; border: none; background: #38bdf8; color: #0f172a; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <div id="loginView" class="card" style="margin-top: 60px;">
+    <h2>퀴즈 부저 참가</h2>
+    <p style="color: #94a3b8;">학번과 이름을 입력해주세요<br>(예: 20415 김철수)</p>
+    <input type="text" id="nameInput" placeholder="20415 김철수" maxlength="15">
+    <br>
+    <button class="join-btn" onclick="joinQuiz()">입장하기</button>
+  </div>
+
+  <div id="quizView" style="display: none; width: 100%; max-width: 400px; text-align: center;">
+    <div class="card">
+      <div class="user-info">
+        <span id="displayName" style="font-weight: bold; color: white;"></span>
+        <span>내 점수: <span id="myScore" class="score-badge">0</span>점</span>
+      </div>
+    </div>
+
+    <button id="buzzerBtn" class="buzzer-btn btn-disabled" disabled onclick="pressBuzzer()">부저</button>
+    <div id="statusMsg" class="status-msg" style="color: #94a3b8;">선생님이 문제를 낼 때까지 대기하세요</div>
+  </div>
+
+  <script>
+    const socket = io();
+    let studentName = '';
+    let isBuzzerOpen = false;
+    let hasPressed = false;
+
+    function joinQuiz() {
+      const input = document.getElementById('nameInput');
+      if (!input.value.trim()) return alert('이름을 입력해주세요!');
+      studentName = input.value.trim();
+
+      socket.emit('register_student', studentName);
+      document.getElementById('loginView').style.display = 'none';
+      document.getElementById('quizView').style.display = 'block';
+      document.getElementById('displayName').innerText = studentName;
+    }
+
+    function pressBuzzer() {
+      if (!isBuzzerOpen || hasPressed) return;
+      hasPressed = true;
+      socket.emit('press_buzzer');
+      updateBuzzerUI(false, '신호 전송 완료!');
+    }
+
+    socket.on('score_update', (score) => {
+      document.getElementById('myScore').innerText = score;
+    });
+
+    socket.on('buzzer_state_change', ({ isLocked }) => {
+      isBuzzerOpen = !isLocked;
+      if (isBuzzerOpen) {
+        hasPressed = false;
+        updateBuzzerUI(true, '지금 누르세요!');
+      } else {
+        updateBuzzerUI(false, '부저가 잠겼습니다');
+      }
+    });
+
+    socket.on('buzzer_reset', () => {
+      hasPressed = false;
+      isBuzzerOpen = true;
+      updateBuzzerUI(true, '지금 누르세요!');
+    });
+
+    socket.on('buzzer_result', ({ rank, isFirst }) => {
+      const msg = document.getElementById('statusMsg');
+      if (isFirst) {
+        msg.innerText = '🎉 1순위 정답 기회 획득!';
+        msg.style.color = '#38bdf8';
+        if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+      } else {
+        msg.innerText = `선착순 ${rank}위 등록되었습니다`;
+        msg.style.color = '#f59e0b';
+        if (navigator.vibrate) navigator.vibrate(100);
+      }
+    });
+
+    socket.on('buzzer_status_broadcast', ({ firstBuzzerName }) => {
+      if (!hasPressed) {
+        updateBuzzerUI(false, `1순위(${firstBuzzerName}) 선점 완료!`);
+      }
+    });
+
+    function updateBuzzerUI(active, text) {
+      const btn = document.getElementById('buzzerBtn');
+      const msg = document.getElementById('statusMsg');
+      msg.innerText = text;
+      if (active) {
+        btn.disabled = false;
+        btn.className = 'buzzer-btn btn-ready';
+      } else {
+        btn.disabled = true;
+        btn.className = 'buzzer-btn btn-disabled';
+      }
+    }
+  </script>
+</body>
+</html>

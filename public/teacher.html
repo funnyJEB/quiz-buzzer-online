@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>교사용 퀴즈 관제 대시보드</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 24px; }
+    .container { max-width: 1000px; margin: 0 auto; }
+    h1 { margin-top: 0; font-size: 26px; display: flex; align-items: center; justify-content: space-between; }
+    .status-badge { padding: 6px 14px; border-radius: 20px; font-size: 14px; font-weight: bold; }
+    .status-open { background: #16a34a; color: white; }
+    .status-locked { background: #dc2626; color: white; }
+    .control-panel { background: #1e293b; padding: 18px; border-radius: 12px; margin-bottom: 24px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+    button { cursor: pointer; font-size: 15px; font-weight: bold; padding: 10px 18px; border: none; border-radius: 8px; transition: 0.15s ease; }
+    .btn-green { background: #22c55e; color: #022c22; }
+    .btn-red { background: #ef4444; color: white; }
+    .btn-gray { background: #475569; color: white; }
+    select { font-size: 15px; padding: 10px; border-radius: 8px; background: #334155; color: white; border: 1px solid #475569; }
+    .content-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 20px; }
+    .card { background: #1e293b; border-radius: 12px; padding: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.3); }
+    .card h2 { margin-top: 0; font-size: 18px; color: #94a3b8; border-bottom: 1px solid #334155; padding-bottom: 10px; }
+    .first-place { background: #1e3a8a; border: 2px solid #3b82f6; border-radius: 10px; padding: 16px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; }
+    .first-place-name { font-size: 24px; font-weight: bold; color: #60a5fa; }
+    .action-btn { padding: 8px 14px; border-radius: 6px; font-size: 14px; margin-left: 6px; }
+    .rank-list { list-style: none; padding: 0; margin: 0; }
+    .rank-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; border-bottom: 1px solid #334155; font-size: 16px; }
+    .rank-badge { font-weight: bold; width: 32px; color: #38bdf8; }
+    .score-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    .score-table th, .score-table td { text-align: left; padding: 8px; border-bottom: 1px solid #334155; }
+    .score-table th { color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>
+      <span>🎯 퀴즈 부저 교사 관제 시스템</span>
+      <span id="statusIndicator" class="status-badge status-locked">부저 잠김</span>
+    </h1>
+
+    <div class="control-panel">
+      <button class="btn-green" onclick="openBuzzer()">🔔 새 문제 시작 (부저 열기)</button>
+      <button class="btn-red" onclick="lockBuzzer()">🛑 부저 잠금</button>
+      
+      <label style="margin-left: auto; font-size: 14px;">순위 표시 개수:
+        <select id="maxRankSelect" onchange="changeMaxDisplay(this.value)">
+          <option value="3">상위 3명</option>
+          <option value="5">상위 5명</option>
+          <option value="10" selected>상위 10명 (추천)</option>
+          <option value="15">상위 15명</option>
+          <option value="30">상위 30명 (학급 전체)</option>
+        </select>
+      </label>
+      <button class="btn-gray" onclick="resetScores()">점수 전체 초기화</button>
+    </div>
+
+    <div class="content-grid">
+      <div class="card">
+        <h2>⚡ 선착순 부저 명단 (<span id="queueCount">0</span>명 누름)</h2>
+        <div id="firstPlaceBox" style="display: none;" class="first-place">
+          <div>
+            <div style="font-size: 12px; color: #93c5fd;">🥇 1순위 정답 도전권</div>
+            <div id="firstStudentName" class="first-place-name">학생 이름</div>
+          </div>
+          <div>
+            <button class="action-btn btn-green" onclick="judgeFirst(true)">정답 (+10)</button>
+            <button class="action-btn btn-red" onclick="judgeFirst(false)">오답 (-5)</button>
+          </div>
+        </div>
+
+        <ul id="rankList" class="rank-list">
+          <li style="color: #64748b; padding: 10px;">새 문제를 시작하면 학생 순위가 여기에 표시됩니다.</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h2>🏆 실시간 누적 점수표</h2>
+        <div style="max-height: 480px; overflow-y: auto;">
+          <table class="score-table">
+            <thead>
+              <tr>
+                <th>학생 이름</th>
+                <th>현재 점수</th>
+                <th>점수 조정</th>
+              </tr>
+            </thead>
+            <tbody id="scoreTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const socket = io();
+    let currentQueue = [];
+    let currentScores = {};
+    let maxDisplay = 10;
+
+    socket.emit('teacher_init');
+
+    socket.on('state_update', (data) => {
+      updateLockStatus(data.isLocked);
+      currentQueue = data.buzzerQueue;
+      currentScores = data.scores;
+      maxDisplay = data.maxDisplayCount;
+      document.getElementById('maxRankSelect').value = maxDisplay;
+      renderQueue();
+      renderScores();
+    });
+
+    socket.on('buzzer_state_change', ({ isLocked }) => updateLockStatus(isLocked));
+    socket.on('queue_updated', (queue) => {
+      currentQueue = queue;
+      renderQueue();
+    });
+    socket.on('scores_updated', (scores) => {
+      currentScores = scores;
+      renderScores();
+    });
+
+    function updateLockStatus(isLocked) {
+      const el = document.getElementById('statusIndicator');
+      if (isLocked) {
+        el.innerText = '부저 잠김';
+        el.className = 'status-badge status-locked';
+      } else {
+        el.innerText = '부저 열림 (입력 대기중)';
+        el.className = 'status-badge status-open';
+      }
+    }
+
+    function renderQueue() {
+      document.getElementById('queueCount').innerText = currentQueue.length;
+      const firstBox = document.getElementById('firstPlaceBox');
+      const list = document.getElementById('rankList');
+
+      if (currentQueue.length > 0) {
+        firstBox.style.display = 'flex';
+        document.getElementById('firstStudentName').innerText = currentQueue[0].name;
+      } else {
+        firstBox.style.display = 'none';
+      }
+
+      list.innerHTML = '';
+      const displayItems = currentQueue.slice(0, maxDisplay);
+      if (displayItems.length === 0) {
+        list.innerHTML = '<li style="color: #64748b; padding: 10px;">누른 학생이 없습니다.</li>';
+        return;
+      }
+
+      displayItems.forEach((item, idx) => {
+        const li = document.createElement('li');
+        li.className = 'rank-item';
+        li.innerHTML = `
+          <div>
+            <span class="rank-badge">${idx + 1}위</span>
+            <strong style="color: ${idx === 0 ? '#60a5fa' : '#f8fafc'}">${item.name}</strong>
+          </div>
+          <div>
+            <button class="action-btn btn-green" style="padding: 4px 8px;" onclick="adjustScore('${item.name}', 10)">+10</button>
+            <button class="action-btn btn-red" style="padding: 4px 8px;" onclick="adjustScore('${item.name}', -5)">-5</button>
+          </div>
+        `;
+        list.appendChild(li);
+      });
+    }
+
+    function renderScores() {
+      const tbody = document.getElementById('scoreTableBody');
+      tbody.innerHTML = '';
+      const sorted = Object.entries(currentScores).sort((a, b) => b[1] - a[1]);
+
+      sorted.forEach(([name, score]) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td><strong>${name}</strong></td>
+          <td style="color: #38bdf8; font-weight: bold;">${score}점</td>
+          <td>
+            <button style="padding: 2px 6px;" onclick="adjustScore('${name}', 5)">+5</button>
+            <button style="padding: 2px 6px;" onclick="adjustScore('${name}', -5)">-5</button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function openBuzzer() { socket.emit('open_buzzer'); }
+    function lockBuzzer() { socket.emit('lock_buzzer'); }
+    function changeMaxDisplay(val) {
+      maxDisplay = parseInt(val, 10);
+      socket.emit('set_max_display', maxDisplay);
+      renderQueue();
+    }
+    function judgeFirst(isCorrect) {
+      if (currentQueue.length === 0) return;
+      adjustScore(currentQueue[0].name, isCorrect ? 10 : -5);
+      lockBuzzer();
+    }
+    function adjustScore(name, delta) { socket.emit('update_score', { name, delta }); }
+    function resetScores() {
+      if (confirm('모든 학생의 점수를 초기화하시겠습니까?')) socket.emit('reset_all_scores');
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+{
+  "name": "quiz-buzzer-app",
+  "version": "1.0.0",
+  "description": "Realtime Quiz Buzzer for Classroom and Grade Events",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5"
+  }
+}
