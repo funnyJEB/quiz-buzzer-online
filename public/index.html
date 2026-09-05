@@ -3,73 +3,205 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>실시간 퀴즈 부저</title>
+  <title>퀴즈 부저</title>
   <script src="/socket.io/socket.io.js"></script>
   <style>
     :root {
-      --bg: #fdfbf7;
+      --bg: #f8fafc;
       --card-bg: #ffffff;
-      --text: #2d3748;
-      --score-bg: #fef08a; /* 파스텔 옐로우 */
+      --text: #1e293b;
+      --score-bg: #fef9c3; /* 부드러운 레몬 파스텔 */
       --score-text: #854d0e;
-      --buzzer-ready: linear-gradient(145deg, #ff6b6b, #ee5253);
-      --buzzer-disabled: #cbd5e1;
-      --border: #f1f5f9;
+      --buzzer-ready: radial-gradient(circle at 35% 35%, #ff5252, #d32f2f);
+      --buzzer-disabled: #e2e8f0;
+      --border: #e2e8f0;
     }
-    body { font-family: -apple-system, BlinkMacSystemFont, "Pretendard", "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 18px; display: flex; flex-direction: column; align-items: center; justify-content: space-between; min-height: 94vh; box-sizing: border-box; }
-    
-    /* 헤더 카드 */
-    .top-card { width: 100%; max-width: 380px; background: var(--card-bg); border-radius: 20px; padding: 16px 20px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.04); border: 1px solid #fed7aa; display: flex; justify-content: space-between; align-items: center; }
-    .student-badge { font-size: 20px; font-weight: 900; color: #1e293b; background: #f1f5f9; padding: 6px 14px; border-radius: 12px; }
-    .btn-leave { background: #fee2e2; color: #ef4444; border: none; font-size: 12px; font-weight: 700; padding: 6px 10px; border-radius: 8px; cursor: pointer; }
-    
-    /* 점수 강조 레이어 */
-    .score-card { width: 100%; max-width: 380px; background: var(--score-bg); border-radius: 20px; padding: 16px; margin-top: 14px; text-align: center; box-shadow: 0 4px 15px rgba(254, 240, 138, 0.4); }
-    .score-num { font-size: 56px; font-weight: 900; color: var(--score-text); line-height: 1; }
-    .score-unit { font-size: 22px; font-weight: 800; color: var(--score-text); margin-left: 4px; }
-    
-    /* 부저 버튼 (입체 토이 팝 스타일) */
-    .buzzer-wrap { margin: auto 0; text-align: center; }
-    .buzzer-btn { width: 230px; height: 230px; border-radius: 50%; border: 8px solid #ffffff; font-size: 34px; font-weight: 900; color: white; cursor: pointer; outline: none; transition: transform 0.08s ease, box-shadow 0.08s ease; display: flex; align-items: center; justify-content: center; user-select: none; -webkit-tap-highlight-color: transparent; }
-    .btn-ready { background: var(--buzzer-ready); box-shadow: 0 14px 28px rgba(238, 82, 83, 0.45); }
-    .btn-ready:active { transform: scale(0.92); box-shadow: 0 4px 10px rgba(238, 82, 83, 0.3); }
-    .btn-disabled { background: var(--buzzer-disabled); color: #94a3b8; cursor: not-allowed; box-shadow: none; border-color: #e2e8f0; }
-    
-    .status-text { font-size: 18px; font-weight: 800; color: #64748b; margin-top: 16px; min-height: 28px; }
-    
-    /* 로그인 모달 */
-    .login-box { width: 100%; max-width: 360px; background: white; border-radius: 24px; padding: 32px 24px; text-align: center; box-shadow: 0 15px 35px rgba(0,0,0,0.06); border: 1px solid #fed7aa; margin: auto 0; }
-    input[type="text"] { width: 85%; padding: 15px; font-size: 18px; font-weight: 700; border-radius: 12px; border: 2px solid #e2e8f0; text-align: center; margin: 18px 0; outline: none; transition: border-color 0.2s; }
-    input[type="text"]:focus { border-color: #fb923c; }
-    .start-btn { width: 93%; padding: 15px; font-size: 18px; font-weight: 800; border-radius: 12px; border: none; background: #fb923c; color: white; cursor: pointer; box-shadow: 0 6px 15px rgba(251, 146, 60, 0.4); }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Pretendard", "Segoe UI", "Malgun Gothic", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      height: 100dvh; /* 모바일 주소창 대응 세로 꽉 찬 높이 */
+      box-sizing: border-box;
+      overflow: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* 1. 상단 사용자 명찰 카드 */
+    .top-bar {
+      width: 100%;
+      max-width: 360px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: var(--card-bg);
+      padding: 12px 16px;
+      border-radius: 16px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.03);
+      border: 1px solid var(--border);
+    }
+    .student-badge {
+      font-size: 18px;
+      font-weight: 800;
+      color: #0f172a;
+    }
+    .btn-leave {
+      background: #fee2e2;
+      color: #dc2626;
+      border: none;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 6px 10px;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+
+    /* 2. 점수 전용 레이어 */
+    .score-card {
+      width: 100%;
+      max-width: 360px;
+      background: var(--score-bg);
+      border-radius: 18px;
+      padding: 12px 0;
+      margin-top: 10px;
+      text-align: center;
+      box-shadow: 0 4px 12px rgba(254, 240, 138, 0.45);
+      border: 1px solid #fef08a;
+    }
+    .score-num {
+      font-size: 46px;
+      font-weight: 900;
+      color: var(--score-text);
+      line-height: 1;
+    }
+    .score-unit {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--score-text);
+      margin-left: 2px;
+    }
+
+    /* 3. 중앙 부저 버튼 영역 */
+    .buzzer-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      flex: 1;
+      width: 100%;
+      margin: 10px 0;
+    }
+    .buzzer-btn {
+      width: min(65vw, 230px);
+      height: min(65vw, 230px);
+      border-radius: 50%;
+      border: 8px solid #ffffff;
+      font-size: 34px;
+      font-weight: 900;
+      color: white;
+      cursor: pointer;
+      outline: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      transition: transform 0.06s ease, box-shadow 0.06s ease;
+    }
+    .btn-ready {
+      background: var(--buzzer-ready);
+      box-shadow: 0 12px 24px rgba(220, 38, 38, 0.4);
+    }
+    .btn-ready:active {
+      transform: scale(0.93);
+      box-shadow: 0 4px 10px rgba(220, 38, 38, 0.3);
+    }
+    .btn-disabled {
+      background: var(--buzzer-disabled);
+      color: #94a3b8;
+      cursor: not-allowed;
+      box-shadow: none;
+      border-color: #cbd5e1;
+    }
+
+    /* 4. 하단 상태 메시지 (가독성 높은 폰트) */
+    .status-msg {
+      font-size: 17px;
+      font-weight: 700;
+      color: #64748b;
+      margin-top: 18px;
+      min-height: 26px;
+      text-align: center;
+      letter-spacing: -0.3px;
+    }
+
+    /* 입장 화면 */
+    .login-box {
+      width: 100%;
+      max-width: 340px;
+      background: white;
+      border-radius: 20px;
+      padding: 32px 20px;
+      text-align: center;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+      border: 1px solid var(--border);
+      margin: auto 0;
+    }
+    input[type="text"] {
+      width: 82%;
+      padding: 14px;
+      font-size: 18px;
+      font-weight: 700;
+      border-radius: 12px;
+      border: 1.5px solid #cbd5e1;
+      text-align: center;
+      margin: 18px 0;
+      outline: none;
+    }
+    input[type="text"]:focus { border-color: #4f46e5; }
+    .start-btn {
+      width: 90%;
+      padding: 14px;
+      font-size: 17px;
+      font-weight: 700;
+      border-radius: 12px;
+      border: none;
+      background: #4f46e5;
+      color: white;
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
 
-  <!-- 1. 입장 화면 -->
+  <!-- 1. 로그인 창 -->
   <div id="loginView" class="login-box">
-    <div style="font-size: 40px; margin-bottom: 10px;">👋</div>
-    <h2 style="margin: 0; color: #1e293b;">퀴즈 참가하기</h2>
-    <p style="color: #64748b; font-size: 14px; margin-top: 6px;">사용할 닉네임을 입력하세요</p>
-    <input type="text" id="nicknameInput" placeholder="닉네임 입력" maxlength="12">
+    <div style="font-size: 38px; margin-bottom: 8px;">🔔</div>
+    <h2 style="margin: 0; font-size: 22px;">퀴즈 참가하기</h2>
+    <p style="color: #64748b; font-size: 14px; margin-top: 6px;">사용할 닉네임을 입력해주세요</p>
+    <input type="text" id="nicknameInput" placeholder="닉네임" maxlength="12">
     <button class="start-btn" onclick="startQuiz()">입장하기</button>
   </div>
 
-  <!-- 2. 부저 게임 화면 -->
-  <div id="quizView" style="display: none; width: 100%; max-width: 380px; flex-direction: column; align-items: center;">
-    <div class="top-card">
-      <span id="studentNameDisplay" class="student-badge">김철수</span>
-      <button class="btn-leave" onclick="leaveQuiz()">아이디 변경 / 나가기</button>
+  <!-- 2. 부저 메인 창 (스마트폰 세로 최적화) -->
+  <div id="quizView" style="display: none; width: 100%; max-width: 360px; height: 100%; flex-direction: column; align-items: center; justify-content: space-between;">
+    <div class="top-bar">
+      <span id="studentNameDisplay" class="student-badge">-</span>
+      <button class="btn-leave" onclick="leaveQuiz()">아이디 변경</button>
     </div>
 
-    <!-- 점수 레이어 -->
     <div class="score-card">
       <span id="scoreVal" class="score-num">0</span><span class="score-unit">점</span>
     </div>
 
-    <div class="buzzer-wrap">
+    <div class="buzzer-container">
       <button id="buzzerBtn" class="buzzer-btn btn-disabled" disabled onclick="handleBuzzerPress()">부저</button>
-      <div id="statusMsg" class="status-text">선생님이 부저를 열 때까지 대기하세요</div>
+      <div id="statusMsg" class="status-msg">선생님이 부저를 열 때까지 대기하세요</div>
     </div>
   </div>
 
@@ -79,12 +211,42 @@
     let isBuzzerOpen = false;
     let hasPressed = false;
 
-    // 세션 스토리지에서 이전 닉네임 자동 복원 (새로고침 대응)
+    // Web Audio API 사운드 생성기 (딜레이 0초 자체 합성음)
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    
+    function playBuzzerSound() {
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(600, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(150, audioCtx.currentTime + 0.18);
+      gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.18);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.18);
+    }
+
+    function playOpenSound() {
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(523.25, audioCtx.currentTime); // C5
+      osc.frequency.setValueAtTime(659.25, audioCtx.currentTime + 0.08); // E5
+      gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.2);
+    }
+
     window.addEventListener('load', () => {
       const savedName = sessionStorage.getItem('quiz_nickname');
-      if (savedName) {
-        joinRoom(savedName);
-      }
+      if (savedName) joinRoom(savedName);
     });
 
     function startQuiz() {
@@ -114,6 +276,7 @@
     function handleBuzzerPress() {
       if (!isBuzzerOpen || hasPressed) return;
       hasPressed = true;
+      playBuzzerSound();
       socket.emit('press_buzzer');
       updateUI(false, '신호 전송 완료!');
     }
@@ -126,15 +289,17 @@
       isBuzzerOpen = !isLocked;
       if (isBuzzerOpen) {
         hasPressed = false;
+        playOpenSound();
         updateUI(true, '지금 부저를 누르세요!');
       } else {
-        updateUI(false, '부저가 닫혔습니다');
+        updateUI(false, '부저가 잠겼습니다');
       }
     });
 
     socket.on('buzzer_reset', () => {
       hasPressed = false;
       isBuzzerOpen = true;
+      playOpenSound();
       updateUI(true, '지금 부저를 누르세요!');
     });
 
@@ -142,10 +307,10 @@
       const msg = document.getElementById('statusMsg');
       if (isFirst) {
         msg.innerText = '🎉 1순위 정답 기회 획득!';
-        msg.style.color = '#ef4444';
+        msg.style.color = '#dc2626';
         if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
       } else {
-        msg.innerText = `선착순 ${rank}위 등록되었습니다`;
+        msg.innerText = `선착순 ${rank}위 접수 완료!`;
         msg.style.color = '#f59e0b';
         if (navigator.vibrate) navigator.vibrate(80);
       }
@@ -153,6 +318,12 @@
 
     socket.on('force_kicked', () => {
       alert('선생님에 의해 퇴장되었습니다.');
+      sessionStorage.removeItem('quiz_nickname');
+      location.reload();
+    });
+
+    socket.on('force_game_restart', () => {
+      alert('새 게임이 시작되어 초기화되었습니다. 다시 닉네임을 입력해주세요.');
       sessionStorage.removeItem('quiz_nickname');
       location.reload();
     });
