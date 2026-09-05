@@ -2,89 +2,135 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
-  <title>교사용 퀴즈 관제 대시보드</title>
+  <title>선생님 퀴즈 부저 관제 대시보드</title>
   <script src="/socket.io/socket.io.js"></script>
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 24px; }
-    .container { max-width: 1000px; margin: 0 auto; }
-    h1 { margin-top: 0; font-size: 26px; display: flex; align-items: center; justify-content: space-between; }
-    .status-badge { padding: 6px 14px; border-radius: 20px; font-size: 14px; font-weight: bold; }
-    .status-open { background: #16a34a; color: white; }
-    .status-locked { background: #dc2626; color: white; }
-    .control-panel { background: #1e293b; padding: 18px; border-radius: 12px; margin-bottom: 24px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
-    button { cursor: pointer; font-size: 15px; font-weight: bold; padding: 10px 18px; border: none; border-radius: 8px; transition: 0.15s ease; }
-    .btn-green { background: #22c55e; color: #022c22; }
-    .btn-red { background: #ef4444; color: white; }
-    .btn-gray { background: #475569; color: white; }
-    select { font-size: 15px; padding: 10px; border-radius: 8px; background: #334155; color: white; border: 1px solid #475569; }
-    .content-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 20px; }
-    .card { background: #1e293b; border-radius: 12px; padding: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.3); }
-    .card h2 { margin-top: 0; font-size: 18px; color: #94a3b8; border-bottom: 1px solid #334155; padding-bottom: 10px; }
-    .first-place { background: #1e3a8a; border: 2px solid #3b82f6; border-radius: 10px; padding: 16px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; }
-    .first-place-name { font-size: 24px; font-weight: bold; color: #60a5fa; }
-    .action-btn { padding: 8px 14px; border-radius: 6px; font-size: 14px; margin-left: 6px; }
-    .rank-list { list-style: none; padding: 0; margin: 0; }
-    .rank-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; border-bottom: 1px solid #334155; font-size: 16px; }
-    .rank-badge { font-weight: bold; width: 32px; color: #38bdf8; }
+    :root {
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --text: #334155;
+      --primary: #6366f1;
+      --primary-soft: #e0e7ff;
+      --success: #10b981;
+      --success-soft: #d1fae5;
+      --danger: #f43f5e;
+      --danger-soft: #ffe4e6;
+      --warning: #f59e0b;
+      --warning-soft: #fef3c7;
+      --border: #e2e8f0;
+    }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Pretendard", "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 24px; }
+    .container { max-width: 1100px; margin: 0 auto; }
+    header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+    h1 { font-size: 24px; font-weight: 800; color: #1e293b; margin: 0; display: flex; align-items: center; gap: 10px; }
+    .status-pill { padding: 6px 16px; border-radius: 999px; font-size: 14px; font-weight: bold; }
+    .pill-open { background: var(--success-soft); color: #065f46; border: 1px solid #a7f3d0; }
+    .pill-locked { background: var(--danger-soft); color: #9f1239; border: 1px solid #fecdd3; }
+    
+    .toolbar { background: var(--card-bg); border-radius: 16px; padding: 18px; box-shadow: 0 4px 20px -2px rgba(0,0,0,0.05); border: 1px solid var(--border); display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 24px; }
+    button { cursor: pointer; font-size: 15px; font-weight: 700; padding: 10px 18px; border: none; border-radius: 10px; transition: 0.15s ease; display: inline-flex; align-items: center; gap: 6px; }
+    button:active { transform: scale(0.97); }
+    .btn-primary { background: var(--primary); color: white; }
+    .btn-danger { background: var(--danger); color: white; }
+    .btn-light { background: #f1f5f9; color: #475569; border: 1px solid var(--border); }
+    select, input[type="number"] { font-size: 14px; font-weight: 600; padding: 9px 12px; border-radius: 8px; border: 1px solid var(--border); background: #f8fafc; color: #334155; }
+    
+    .grid { display: grid; grid-template-columns: 1.3fr 1fr; gap: 24px; }
+    .card { background: var(--card-bg); border-radius: 16px; padding: 22px; box-shadow: 0 4px 20px -2px rgba(0,0,0,0.05); border: 1px solid var(--border); }
+    .card-title { font-size: 17px; font-weight: 700; color: #1e293b; margin-top: 0; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+    
+    /* 1순위 강조 배너 */
+    .turn-box { background: var(--primary-soft); border: 2px solid #c7d2fe; border-radius: 14px; padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; }
+    .turn-name { font-size: 24px; font-weight: 900; color: #3730a3; }
+    .turn-actions { display: flex; gap: 8px; }
+    
+    /* 순위 리스트 */
+    .queue-list { list-style: none; padding: 0; margin: 0; }
+    .queue-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; border-radius: 10px; margin-bottom: 6px; background: #f8fafc; border: 1px solid var(--border); }
+    .rank-num { font-weight: 800; width: 36px; color: var(--primary); font-size: 15px; }
+    
+    /* 점수표 */
     .score-table { width: 100%; border-collapse: collapse; font-size: 14px; }
-    .score-table th, .score-table td { text-align: left; padding: 8px; border-bottom: 1px solid #334155; }
-    .score-table th { color: #94a3b8; }
+    .score-table th, .score-table td { padding: 10px 8px; text-align: left; border-bottom: 1px solid var(--border); }
+    .score-table th { color: #64748b; font-weight: 600; }
+    .btn-kick { background: #fee2e2; color: #dc2626; padding: 4px 8px; font-size: 12px; border-radius: 6px; border: none; font-weight: bold; }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>
-      <span>🎯 퀴즈 부저 교사 관제 시스템</span>
-      <span id="statusIndicator" class="status-badge status-locked">부저 잠김</span>
-    </h1>
+    <header>
+      <h1>✨ 퀴즈 부저 관제 대시보드</h1>
+      <div>
+        <span style="font-size: 14px; color: #64748b; margin-right: 12px;">접속자: <strong id="onlineCount" style="color: var(--primary);">0</strong>명</span>
+        <span id="lockBadge" class="status-pill pill-locked">부저 잠김</span>
+      </div>
+    </header>
 
-    <div class="control-panel">
-      <button class="btn-green" onclick="openBuzzer()">🔔 새 문제 시작 (부저 열기)</button>
-      <button class="btn-red" onclick="lockBuzzer()">🛑 부저 잠금</button>
-      
-      <label style="margin-left: auto; font-size: 14px;">순위 표시 개수:
+    <div class="toolbar">
+      <label style="font-size: 14px; font-weight: 600;">배점:
+        <select id="scoreSelect">
+          <option value="5">5점</option>
+          <option value="10" selected>10점</option>
+          <option value="20">20점</option>
+          <option value="30">30점</option>
+          <option value="50">50점</option>
+        </select>
+      </label>
+
+      <button class="btn-primary" onclick="openBuzzer()">🔔 새 문제 시작 (부저 열기)</button>
+      <button class="btn-danger" onclick="lockBuzzer()">🛑 부저 즉시 잠금</button>
+
+      <label style="margin-left: auto; font-size: 14px; font-weight: 600;">선착순 접수 인원:
         <select id="maxRankSelect" onchange="changeMaxDisplay(this.value)">
           <option value="3">상위 3명</option>
           <option value="5">상위 5명</option>
-          <option value="10" selected>상위 10명 (추천)</option>
+          <option value="10" selected>상위 10명 (권장)</option>
           <option value="15">상위 15명</option>
           <option value="30">상위 30명 (학급 전체)</option>
         </select>
       </label>
-      <button class="btn-gray" onclick="resetScores()">점수 전체 초기화</button>
+      <button class="btn-light" onclick="resetAllScores()">점수 리셋</button>
     </div>
 
-    <div class="content-grid">
+    <div class="grid">
+      <!-- 선착순 큐 영역 -->
       <div class="card">
-        <h2>⚡ 선착순 부저 명단 (<span id="queueCount">0</span>명 누름)</h2>
-        <div id="firstPlaceBox" style="display: none;" class="first-place">
+        <div class="card-title">
+          <span>⚡ 선착순 순위 (<span id="queueLen">0</span>명 접수됨)</span>
+        </div>
+
+        <div id="firstBox" class="turn-box" style="display: none;">
           <div>
-            <div style="font-size: 12px; color: #93c5fd;">🥇 1순위 정답 도전권</div>
-            <div id="firstStudentName" class="first-place-name">학생 이름</div>
+            <div style="font-size: 12px; font-weight: bold; color: #4338ca;">🏆 현재 발언권 (1순위)</div>
+            <div id="firstName" class="turn-name">-</div>
           </div>
-          <div>
-            <button class="action-btn btn-green" onclick="judgeFirst(true)">정답 (+10)</button>
-            <button class="action-btn btn-red" onclick="judgeFirst(false)">오답 (-5)</button>
+          <div class="turn-actions">
+            <button class="btn-primary" style="background: var(--success);" onclick="judge(true)">정답 (+배점)</button>
+            <button class="btn-danger" onclick="judge(false)">오답 (다음 순위로)</button>
           </div>
         </div>
 
-        <ul id="rankList" class="rank-list">
-          <li style="color: #64748b; padding: 10px;">새 문제를 시작하면 학생 순위가 여기에 표시됩니다.</li>
+        <ul id="queueList" class="queue-list">
+          <li style="color: #94a3b8; text-align: center; padding: 20px;">문제를 시작하면 선착순 명단이 여기에 뜹니다.</li>
         </ul>
       </div>
 
+      <!-- 학생 점수표 및 강퇴 -->
       <div class="card">
-        <h2>🏆 실시간 누적 점수표</h2>
+        <div class="card-title">
+          <span>📊 학생 점수표 및 관리</span>
+        </div>
         <div style="max-height: 480px; overflow-y: auto;">
           <table class="score-table">
             <thead>
               <tr>
-                <th>학생 이름</th>
-                <th>현재 점수</th>
-                <th>점수 조정</th>
+                <th>이름</th>
+                <th>점수</th>
+                <th>조정</th>
+                <th>관리</th>
               </tr>
             </thead>
-            <tbody id="scoreTableBody"></tbody>
+            <tbody id="scoreTbody"></tbody>
           </table>
         </div>
       </div>
@@ -95,7 +141,6 @@
     const socket = io();
     let currentQueue = [];
     let currentScores = {};
-    let maxDisplay = 10;
 
     socket.emit('teacher_init');
 
@@ -103,8 +148,9 @@
       updateLockStatus(data.isLocked);
       currentQueue = data.buzzerQueue;
       currentScores = data.scores;
-      maxDisplay = data.maxDisplayCount;
-      document.getElementById('maxRankSelect').value = maxDisplay;
+      document.getElementById('maxRankSelect').value = data.maxDisplayCount;
+      document.getElementById('scoreSelect').value = data.currentQuestionScore;
+      document.getElementById('onlineCount').innerText = data.onlineCount || 0;
       renderQueue();
       renderScores();
     });
@@ -118,48 +164,52 @@
       currentScores = scores;
       renderScores();
     });
+    socket.on('student_list_updated', ({ scores, onlineCount }) => {
+      currentScores = scores;
+      document.getElementById('onlineCount').innerText = onlineCount;
+      renderScores();
+    });
 
     function updateLockStatus(isLocked) {
-      const el = document.getElementById('statusIndicator');
+      const badge = document.getElementById('lockBadge');
       if (isLocked) {
-        el.innerText = '부저 잠김';
-        el.className = 'status-badge status-locked';
+        badge.innerText = '부저 잠김';
+        badge.className = 'status-pill pill-locked';
       } else {
-        el.innerText = '부저 열림 (입력 대기중)';
-        el.className = 'status-badge status-open';
+        badge.innerText = '부저 열림 (신호 대기중)';
+        badge.className = 'status-pill pill-open';
       }
     }
 
     function renderQueue() {
-      document.getElementById('queueCount').innerText = currentQueue.length;
-      const firstBox = document.getElementById('firstPlaceBox');
-      const list = document.getElementById('rankList');
+      document.getElementById('queueLen').innerText = currentQueue.length;
+      const firstBox = document.getElementById('firstBox');
+      const list = document.getElementById('queueList');
 
       if (currentQueue.length > 0) {
         firstBox.style.display = 'flex';
-        document.getElementById('firstStudentName').innerText = currentQueue[0].name;
+        document.getElementById('firstName').innerText = currentQueue[0].name;
       } else {
         firstBox.style.display = 'none';
       }
 
       list.innerHTML = '';
-      const displayItems = currentQueue.slice(0, maxDisplay);
-      if (displayItems.length === 0) {
-        list.innerHTML = '<li style="color: #64748b; padding: 10px;">누른 학생이 없습니다.</li>';
+      if (currentQueue.length === 0) {
+        list.innerHTML = '<li style="color: #94a3b8; text-align: center; padding: 20px;">문제를 시작하면 선착순 명단이 여기에 뜹니다.</li>';
         return;
       }
 
-      displayItems.forEach((item, idx) => {
+      currentQueue.forEach((item, idx) => {
         const li = document.createElement('li');
-        li.className = 'rank-item';
+        li.className = 'queue-item';
         li.innerHTML = `
-          <div>
-            <span class="rank-badge">${idx + 1}위</span>
-            <strong style="color: ${idx === 0 ? '#60a5fa' : '#f8fafc'}">${item.name}</strong>
+          <div style="display:flex; align-items:center;">
+            <span class="rank-num">${idx + 1}위</span>
+            <strong style="font-size: 16px; color: ${idx === 0 ? 'var(--primary)' : '#334155'}">${item.name}</strong>
           </div>
           <div>
-            <button class="action-btn btn-green" style="padding: 4px 8px;" onclick="adjustScore('${item.name}', 10)">+10</button>
-            <button class="action-btn btn-red" style="padding: 4px 8px;" onclick="adjustScore('${item.name}', -5)">-5</button>
+            <button style="padding: 4px 8px; font-size: 12px;" class="btn-light" onclick="adjustScore('${item.name}', 5)">+5</button>
+            <button style="padding: 4px 8px; font-size: 12px;" class="btn-light" onclick="adjustScore('${item.name}', -5)">-5</button>
           </div>
         `;
         list.appendChild(li);
@@ -167,7 +217,7 @@
     }
 
     function renderScores() {
-      const tbody = document.getElementById('scoreTableBody');
+      const tbody = document.getElementById('scoreTbody');
       tbody.innerHTML = '';
       const sorted = Object.entries(currentScores).sort((a, b) => b[1] - a[1]);
 
@@ -175,31 +225,39 @@
         const tr = document.createElement('tr');
         tr.innerHTML = `
           <td><strong>${name}</strong></td>
-          <td style="color: #38bdf8; font-weight: bold;">${score}점</td>
+          <td style="color: var(--primary); font-weight: 800; font-size: 15px;">${score}점</td>
           <td>
-            <button style="padding: 2px 6px;" onclick="adjustScore('${name}', 5)">+5</button>
-            <button style="padding: 2px 6px;" onclick="adjustScore('${name}', -5)">-5</button>
+            <button class="btn-light" style="padding: 2px 6px; font-size: 12px;" onclick="adjustScore('${name}', 10)">+10</button>
+            <button class="btn-light" style="padding: 2px 6px; font-size: 12px;" onclick="adjustScore('${name}', -5)">-5</button>
+          </td>
+          <td>
+            <button class="btn-kick" onclick="kickStudent('${name}')">퇴장</button>
           </td>
         `;
         tbody.appendChild(tr);
       });
     }
 
-    function openBuzzer() { socket.emit('open_buzzer'); }
+    function openBuzzer() {
+      const score = document.getElementById('scoreSelect').value;
+      socket.emit('open_buzzer', score);
+    }
     function lockBuzzer() { socket.emit('lock_buzzer'); }
-    function changeMaxDisplay(val) {
-      maxDisplay = parseInt(val, 10);
-      socket.emit('set_max_display', maxDisplay);
-      renderQueue();
+    function changeMaxDisplay(val) { socket.emit('set_max_display', val); }
+    function judge(isCorrect) {
+      const score = document.getElementById('scoreSelect').value;
+      socket.emit('judge_first_student', { isCorrect, score });
     }
-    function judgeFirst(isCorrect) {
-      if (currentQueue.length === 0) return;
-      adjustScore(currentQueue[0].name, isCorrect ? 10 : -5);
-      lockBuzzer();
+    function adjustScore(name, delta) { socket.emit('manual_score_adjust', { name, delta }); }
+    function kickStudent(name) {
+      if (confirm(`'${name}' 학생을 정말 퇴장시키겠습니까?`)) {
+        socket.emit('kick_student', name);
+      }
     }
-    function adjustScore(name, delta) { socket.emit('update_score', { name, delta }); }
-    function resetScores() {
-      if (confirm('모든 학생의 점수를 초기화하시겠습니까?')) socket.emit('reset_all_scores');
+    function resetAllScores() {
+      if (confirm('모든 학생의 점수를 0점으로 초기화하시겠습니까?')) {
+        socket.emit('reset_all_scores');
+      }
     }
   </script>
 </body>
