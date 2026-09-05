@@ -2,66 +2,102 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
-  <title>선생님 퀴즈 부저 관제 대시보드</title>
+  <title>퀴즈 현황판</title>
   <script src="/socket.io/socket.io.js"></script>
   <style>
     :root {
       --bg: #f8fafc;
       --card-bg: #ffffff;
-      --text: #334155;
-      --primary: #6366f1;
-      --primary-soft: #e0e7ff;
-      --success: #10b981;
-      --success-soft: #d1fae5;
-      --danger: #f43f5e;
-      --danger-soft: #ffe4e6;
-      --warning: #f59e0b;
-      --warning-soft: #fef3c7;
+      --text-main: #0f172a;
+      --text-sub: #475569;
+      --primary: #4f46e5;
+      --primary-soft: #eef2ff;
+      --success: #16a34a;
+      --success-soft: #dcfce7;
+      --danger: #dc2626;
+      --danger-soft: #fee2e2;
       --border: #e2e8f0;
     }
-    body { font-family: -apple-system, BlinkMacSystemFont, "Pretendard", "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 24px; }
-    .container { max-width: 1100px; margin: 0 auto; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Pretendard", "Segoe UI", "Malgun Gothic", sans-serif;
+      background: var(--bg);
+      color: var(--text-main);
+      margin: 0;
+      padding: 24px;
+      -webkit-font-smoothing: antialiased;
+    }
+    .container { max-width: 1050px; margin: 0 auto; }
     header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-    h1 { font-size: 24px; font-weight: 800; color: #1e293b; margin: 0; display: flex; align-items: center; gap: 10px; }
-    .status-pill { padding: 6px 16px; border-radius: 999px; font-size: 14px; font-weight: bold; }
-    .pill-open { background: var(--success-soft); color: #065f46; border: 1px solid #a7f3d0; }
-    .pill-locked { background: var(--danger-soft); color: #9f1239; border: 1px solid #fecdd3; }
-    
-    .toolbar { background: var(--card-bg); border-radius: 16px; padding: 18px; box-shadow: 0 4px 20px -2px rgba(0,0,0,0.05); border: 1px solid var(--border); display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 24px; }
-    button { cursor: pointer; font-size: 15px; font-weight: 700; padding: 10px 18px; border: none; border-radius: 10px; transition: 0.15s ease; display: inline-flex; align-items: center; gap: 6px; }
-    button:active { transform: scale(0.97); }
+    h1 { font-size: 24px; font-weight: 700; color: #1e293b; margin: 0; letter-spacing: -0.5px; }
+    .status-pill { padding: 6px 14px; border-radius: 999px; font-size: 13px; font-weight: 600; }
+    .pill-open { background: var(--success-soft); color: #15803d; border: 1px solid #bbf7d0; }
+    .pill-locked { background: var(--danger-soft); color: #b91c1c; border: 1px solid #fecaca; }
+
+    .toolbar {
+      background: var(--card-bg);
+      border-radius: 14px;
+      padding: 16px 20px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+      border: 1px solid var(--border);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+    button {
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 600;
+      padding: 9px 16px;
+      border: none;
+      border-radius: 8px;
+      transition: 0.15s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    button:active { transform: scale(0.98); }
     .btn-primary { background: var(--primary); color: white; }
     .btn-danger { background: var(--danger); color: white; }
-    .btn-light { background: #f1f5f9; color: #475569; border: 1px solid var(--border); }
-    select, input[type="number"] { font-size: 14px; font-weight: 600; padding: 9px 12px; border-radius: 8px; border: 1px solid var(--border); background: #f8fafc; color: #334155; }
-    
-    .grid { display: grid; grid-template-columns: 1.3fr 1fr; gap: 24px; }
-    .card { background: var(--card-bg); border-radius: 16px; padding: 22px; box-shadow: 0 4px 20px -2px rgba(0,0,0,0.05); border: 1px solid var(--border); }
-    .card-title { font-size: 17px; font-weight: 700; color: #1e293b; margin-top: 0; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
-    
-    /* 1순위 강조 배너 */
-    .turn-box { background: var(--primary-soft); border: 2px solid #c7d2fe; border-radius: 14px; padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; }
-    .turn-name { font-size: 24px; font-weight: 900; color: #3730a3; }
+    .btn-light { background: #f1f5f9; color: #334155; border: 1px solid var(--border); }
+    select { font-family: inherit; font-size: 14px; font-weight: 600; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border); background: #f8fafc; color: #334155; }
+
+    .grid { display: grid; grid-template-columns: 1.3fr 1fr; gap: 20px; }
+    .card { background: var(--card-bg); border-radius: 14px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); border: 1px solid var(--border); }
+    .card-title { font-size: 17px; font-weight: 700; color: #1e293b; margin: 0 0 16px 0; padding-bottom: 12px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+
+    /* 1순위 상단 박스 */
+    .turn-box { background: var(--primary-soft); border: 1.5px solid #c7d2fe; border-radius: 12px; padding: 16px 18px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+    .turn-name { font-size: 22px; font-weight: 800; color: #312e81; }
     .turn-actions { display: flex; gap: 8px; }
-    
+
     /* 순위 리스트 */
     .queue-list { list-style: none; padding: 0; margin: 0; }
-    .queue-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; border-radius: 10px; margin-bottom: 6px; background: #f8fafc; border: 1px solid var(--border); }
-    .rank-num { font-weight: 800; width: 36px; color: var(--primary); font-size: 15px; }
-    
-    /* 점수표 */
-    .score-table { width: 100%; border-collapse: collapse; font-size: 14px; }
-    .score-table th, .score-table td { padding: 10px 8px; text-align: left; border-bottom: 1px solid var(--border); }
-    .score-table th { color: #64748b; font-weight: 600; }
-    .btn-kick { background: #fee2e2; color: #dc2626; padding: 4px 8px; font-size: 12px; border-radius: 6px; border: none; font-weight: bold; }
+    .queue-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; border-radius: 8px; margin-bottom: 6px; background: #f8fafc; border: 1px solid var(--border); }
+    .rank-num { font-weight: 700; width: 34px; color: var(--primary); font-size: 15px; }
+
+    /* 점수 현황 카드 리스트 */
+    .score-list { list-style: none; padding: 0; margin: 0; max-height: 480px; overflow-y: auto; }
+    .score-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; border-bottom: 1px solid #f1f5f9; position: relative; }
+    .student-name { font-size: 17px; font-weight: 700; color: #1e293b; }
+    .student-score { font-size: 19px; font-weight: 800; color: var(--primary); margin-right: 12px; }
+    .btn-gear { background: transparent; border: none; font-size: 16px; cursor: pointer; padding: 4px; border-radius: 6px; }
+    .btn-gear:hover { background: #e2e8f0; }
+
+    /* 점수 톱니바퀴 팝오버 메뉴 */
+    .action-menu { display: none; position: absolute; right: 10px; top: 40px; background: white; border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 10px 20px rgba(0,0,0,0.1); padding: 8px; z-index: 50; flex-direction: column; gap: 6px; }
+    .action-menu.active { display: flex; }
+    .action-menu button { font-size: 12px; padding: 6px 10px; justify-content: center; }
   </style>
 </head>
 <body>
   <div class="container">
     <header>
-      <h1>✨ 퀴즈 부저 관제 대시보드</h1>
+      <h1>📊 퀴즈 현황판</h1>
       <div>
-        <span style="font-size: 14px; color: #64748b; margin-right: 12px;">접속자: <strong id="onlineCount" style="color: var(--primary);">0</strong>명</span>
+        <span style="font-size: 14px; color: var(--text-sub); margin-right: 12px;">접속 학생: <strong id="onlineCount" style="color: var(--primary);">0</strong>명</span>
         <span id="lockBadge" class="status-pill pill-locked">부저 잠김</span>
       </div>
     </header>
@@ -77,31 +113,33 @@
         </select>
       </label>
 
-      <button class="btn-primary" onclick="openBuzzer()">🔔 새 문제 시작 (부저 열기)</button>
-      <button class="btn-danger" onclick="lockBuzzer()">🛑 부저 즉시 잠금</button>
+      <button class="btn-primary" onclick="openBuzzer()">🔔 새 문제 (부저 열기)</button>
+      <button class="btn-danger" onclick="lockBuzzer()">🛑 부저 잠금</button>
 
-      <label style="margin-left: auto; font-size: 14px; font-weight: 600;">선착순 접수 인원:
+      <label style="margin-left: auto; font-size: 14px; font-weight: 600;">표시 인원:
         <select id="maxRankSelect" onchange="changeMaxDisplay(this.value)">
           <option value="3">상위 3명</option>
           <option value="5">상위 5명</option>
-          <option value="10" selected>상위 10명 (권장)</option>
+          <option value="10" selected>상위 10명</option>
           <option value="15">상위 15명</option>
-          <option value="30">상위 30명 (학급 전체)</option>
+          <option value="30">상위 30명</option>
         </select>
       </label>
-      <button class="btn-light" onclick="resetAllScores()">점수 리셋</button>
+
+      <button class="btn-light" onclick="resetAllScores()">🔄 점수 리셋</button>
+      <button class="btn-danger" style="background: #e11d48;" onclick="startNewGame()">🚨 새 게임 시작</button>
     </div>
 
     <div class="grid">
       <!-- 선착순 큐 영역 -->
       <div class="card">
         <div class="card-title">
-          <span>⚡ 선착순 순위 (<span id="queueLen">0</span>명 접수됨)</span>
+          <span>⚡ 누가 먼저 눌렀을까요? (<span id="queueLen">0</span>명 접수)</span>
         </div>
 
         <div id="firstBox" class="turn-box" style="display: none;">
           <div>
-            <div style="font-size: 12px; font-weight: bold; color: #4338ca;">🏆 현재 발언권 (1순위)</div>
+            <div style="font-size: 12px; font-weight: 700; color: #4338ca;">🏆 1순위 정답 기회</div>
             <div id="firstName" class="turn-name">-</div>
           </div>
           <div class="turn-actions">
@@ -111,28 +149,16 @@
         </div>
 
         <ul id="queueList" class="queue-list">
-          <li style="color: #94a3b8; text-align: center; padding: 20px;">문제를 시작하면 선착순 명단이 여기에 뜹니다.</li>
+          <li style="color: #94a3b8; text-align: center; padding: 20px;">문제를 시작하면 선착순 명단이 여기에 표시됩니다.</li>
         </ul>
       </div>
 
-      <!-- 학생 점수표 및 강퇴 -->
+      <!-- 점수 현황 영역 -->
       <div class="card">
         <div class="card-title">
-          <span>📊 학생 점수표 및 관리</span>
+          <span>🏆 점수 현황</span>
         </div>
-        <div style="max-height: 480px; overflow-y: auto;">
-          <table class="score-table">
-            <thead>
-              <tr>
-                <th>이름</th>
-                <th>점수</th>
-                <th>조정</th>
-                <th>관리</th>
-              </tr>
-            </thead>
-            <tbody id="scoreTbody"></tbody>
-          </table>
-        </div>
+        <ul id="scoreList" class="score-list"></ul>
       </div>
     </div>
   </div>
@@ -195,7 +221,7 @@
 
       list.innerHTML = '';
       if (currentQueue.length === 0) {
-        list.innerHTML = '<li style="color: #94a3b8; text-align: center; padding: 20px;">문제를 시작하면 선착순 명단이 여기에 뜹니다.</li>';
+        list.innerHTML = '<li style="color: #94a3b8; text-align: center; padding: 20px;">문제를 시작하면 선착순 명단이 여기에 표시됩니다.</li>';
         return;
       }
 
@@ -205,38 +231,56 @@
         li.innerHTML = `
           <div style="display:flex; align-items:center;">
             <span class="rank-num">${idx + 1}위</span>
-            <strong style="font-size: 16px; color: ${idx === 0 ? 'var(--primary)' : '#334155'}">${item.name}</strong>
+            <strong style="font-size: 16px; color: ${idx === 0 ? 'var(--primary)' : '#1e293b'}">${item.name}</strong>
           </div>
-          <div>
-            <button style="padding: 4px 8px; font-size: 12px;" class="btn-light" onclick="adjustScore('${item.name}', 5)">+5</button>
-            <button style="padding: 4px 8px; font-size: 12px;" class="btn-light" onclick="adjustScore('${item.name}', -5)">-5</button>
-          </div>
+          <span style="font-size: 12px; color: #94a3b8;">${idx === 0 ? '정답 확인 대기' : '대기중'}</span>
         `;
         list.appendChild(li);
       });
     }
 
     function renderScores() {
-      const tbody = document.getElementById('scoreTbody');
-      tbody.innerHTML = '';
+      const list = document.getElementById('scoreList');
+      list.innerHTML = '';
       const sorted = Object.entries(currentScores).sort((a, b) => b[1] - a[1]);
 
-      sorted.forEach(([name, score]) => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td><strong>${name}</strong></td>
-          <td style="color: var(--primary); font-weight: 800; font-size: 15px;">${score}점</td>
-          <td>
-            <button class="btn-light" style="padding: 2px 6px; font-size: 12px;" onclick="adjustScore('${name}', 10)">+10</button>
-            <button class="btn-light" style="padding: 2px 6px; font-size: 12px;" onclick="adjustScore('${name}', -5)">-5</button>
-          </td>
-          <td>
-            <button class="btn-kick" onclick="kickStudent('${name}')">퇴장</button>
-          </td>
+      if (sorted.length === 0) {
+        list.innerHTML = '<li style="color: #94a3b8; text-align: center; padding: 20px;">접속한 학생이 없습니다.</li>';
+        return;
+      }
+
+      sorted.forEach(([name, score], idx) => {
+        const li = document.createElement('li');
+        li.className = 'score-item';
+        li.innerHTML = `
+          <div style="display:flex; align-items:center; gap: 8px;">
+            <span style="font-size: 13px; font-weight: 700; color: #94a3b8; width: 20px;">${idx + 1}</span>
+            <span class="student-name">${name}</span>
+          </div>
+          <div style="display:flex; align-items:center;">
+            <span class="student-score">${score}점</span>
+            <button class="btn-gear" onclick="toggleMenu('${name}', event)">⚙️</button>
+            <div id="menu-${name}" class="action-menu">
+              <button class="btn-light" onclick="adjustScore('${name}', 10)">+10점</button>
+              <button class="btn-light" onclick="adjustScore('${name}', -5)">-5점</button>
+              <button class="btn-danger" style="background:#fee2e2; color:#dc2626;" onclick="kickStudent('${name}')">퇴장</button>
+            </div>
+          </div>
         `;
-        tbody.appendChild(tr);
+        list.appendChild(li);
       });
     }
+
+    function toggleMenu(name, event) {
+      event.stopPropagation();
+      document.querySelectorAll('.action-menu').forEach(m => m.classList.remove('active'));
+      const menu = document.getElementById(`menu-${name}`);
+      if (menu) menu.classList.add('active');
+    }
+
+    document.addEventListener('click', () => {
+      document.querySelectorAll('.action-menu').forEach(m => m.classList.remove('active'));
+    });
 
     function openBuzzer() {
       const score = document.getElementById('scoreSelect').value;
@@ -250,14 +294,13 @@
     }
     function adjustScore(name, delta) { socket.emit('manual_score_adjust', { name, delta }); }
     function kickStudent(name) {
-      if (confirm(`'${name}' 학생을 정말 퇴장시키겠습니까?`)) {
-        socket.emit('kick_student', name);
-      }
+      if (confirm(`'${name}' 학생을 정말 퇴장시키겠습니까?`)) socket.emit('kick_student', name);
     }
     function resetAllScores() {
-      if (confirm('모든 학생의 점수를 0점으로 초기화하시겠습니까?')) {
-        socket.emit('reset_all_scores');
-      }
+      if (confirm('모든 학생의 점수를 0점으로 초기화하시겠습니까? (학생 화면 유지)')) socket.emit('reset_all_scores');
+    }
+    function startNewGame() {
+      if (confirm('새 게임을 시작하시겠습니까?\n모든 학생이 퇴장 처리되며 초기 로그인 화면으로 돌아갑니다.')) socket.emit('start_new_game');
     }
   </script>
 </body>
