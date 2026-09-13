@@ -28,7 +28,26 @@
     }
     .container { max-width: 1050px; margin: 0 auto; }
     header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+    .header-left { display: flex; align-items: center; gap: 14px; }
     h1 { font-size: 24px; font-weight: 700; color: #1e293b; margin: 0; letter-spacing: -0.5px; }
+    
+    /* 접속 QR 버튼 */
+    .btn-qr {
+      background: #e0e7ff;
+      color: var(--primary);
+      border: 1px solid #c7d2fe;
+      padding: 6px 14px;
+      font-size: 14px;
+      font-weight: 700;
+      border-radius: 8px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: background 0.15s ease;
+    }
+    .btn-qr:hover { background: #c7d2fe; }
+
     .status-pill { padding: 6px 14px; border-radius: 999px; font-size: 13px; font-weight: 600; }
     .pill-open { background: var(--success-soft); color: #15803d; border: 1px solid #bbf7d0; }
     .pill-locked { background: var(--danger-soft); color: #b91c1c; border: 1px solid #fecaca; }
@@ -90,12 +109,60 @@
     .action-menu { display: none; position: absolute; right: 10px; top: 40px; background: white; border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 10px 20px rgba(0,0,0,0.1); padding: 8px; z-index: 50; flex-direction: column; gap: 6px; }
     .action-menu.active { display: flex; }
     .action-menu button { font-size: 12px; padding: 6px 10px; justify-content: center; }
+
+    /* QR코드 모달 팝업 */
+    .qr-modal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.6);
+      backdrop-filter: blur(4px);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+    .qr-modal.open { display: flex; }
+    .qr-box {
+      background: white;
+      border-radius: 24px;
+      padding: 32px;
+      text-align: center;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+      max-width: 420px;
+      width: 90%;
+      animation: popIn 0.2s ease-out;
+    }
+    @keyframes popIn {
+      from { transform: scale(0.9); opacity: 0; }
+      to { transform: scale(1); opacity: 1; }
+    }
+    .qr-img {
+      width: 280px;
+      height: 280px;
+      border-radius: 16px;
+      border: 1px solid #e2e8f0;
+      margin: 16px 0;
+      display: inline-block;
+    }
+    .qr-url-text {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--primary);
+      word-break: break-all;
+      background: #f1f5f9;
+      padding: 10px;
+      border-radius: 8px;
+      margin-bottom: 18px;
+    }
   </style>
 </head>
 <body>
   <div class="container">
     <header>
-      <h1>📊 퀴즈 현황판</h1>
+      <div class="header-left">
+        <h1>📊 퀴즈 현황판</h1>
+        <button class="btn-qr" onclick="openQrModal()">📱 접속 QR</button>
+      </div>
       <div>
         <span style="font-size: 14px; color: var(--text-sub); margin-right: 12px;">접속 학생: <strong id="onlineCount" style="color: var(--primary);">0</strong>명</span>
         <span id="lockBadge" class="status-pill pill-locked">부저 잠김</span>
@@ -163,10 +230,34 @@
     </div>
   </div>
 
+  <!-- 거대 접속 QR코드 팝업 모달 -->
+  <div id="qrModal" class="qr-modal" onclick="closeQrModal(event)">
+    <div class="qr-box" onclick="event.stopPropagation()">
+      <h2 style="margin: 0; font-size: 22px; color: #1e293b;">스마트폰으로 카메라를 비춰주세요</h2>
+      <p style="color: #64748b; font-size: 14px; margin: 6px 0 16px 0;">QR코드를 스캔하면 부저 화면으로 바로 연결됩니다.</p>
+      <img id="qrImage" class="qr-img" alt="학생 접속용 QR코드" src="" />
+      <div id="qrUrlDisplay" class="qr-url-text">URL 로딩중...</div>
+      <button class="btn-primary" style="width: 100%; justify-content: center; padding: 12px; font-size: 16px;" onclick="closeQrModal()">화면 닫기</button>
+    </div>
+  </div>
+
   <script>
     const socket = io();
     let currentQueue = [];
     let currentScores = {};
+
+    // QR코드 팝업 로직
+    function openQrModal() {
+      const studentUrl = window.location.origin + '/';
+      document.getElementById('qrUrlDisplay').innerText = studentUrl;
+      // Google Chart API로 선명한 350x350 QR코드 즉시 생성
+      document.getElementById('qrImage').src = `https://api.qrserver.com/v1/create-qr-code/?size=350x350&data=${encodeURIComponent(studentUrl)}`;
+      document.getElementById('qrModal').classList.add('open');
+    }
+
+    function closeQrModal(e) {
+      document.getElementById('qrModal').classList.remove('open');
+    }
 
     socket.emit('teacher_init');
 
