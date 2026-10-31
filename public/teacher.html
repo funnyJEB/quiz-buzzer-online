@@ -2,6 +2,7 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>퀴즈 현황판</title>
   <script src="/socket.io/socket.io.js"></script>
   <style>
@@ -30,7 +31,7 @@
     header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
     .header-left { display: flex; align-items: center; gap: 14px; }
     h1 { font-size: 24px; font-weight: 700; color: #1e293b; margin: 0; letter-spacing: -0.5px; }
-    
+
     /* 접속 QR 버튼 */
     .btn-qr {
       background: #e0e7ff;
@@ -88,19 +89,32 @@
     .card-title { font-size: 17px; font-weight: 700; color: #1e293b; margin: 0 0 16px 0; padding-bottom: 12px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
 
     /* 1순위 상단 박스 */
-    .turn-box { background: var(--primary-soft); border: 1.5px solid #c7d2fe; border-radius: 12px; padding: 16px 18px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+    .turn-box { background: var(--primary-soft); border: 1.5px solid #c7d2fe; border-radius: 12px; padding: 16px 18px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; gap: 12px; }
+    .turn-box.done { background: var(--success-soft); border-color: #bbf7d0; }
+    .turn-label { font-size: 12px; font-weight: 700; color: #4338ca; }
+    .turn-box.done .turn-label { color: #15803d; }
     .turn-name { font-size: 22px; font-weight: 800; color: #312e81; }
+    .turn-box.done .turn-name { color: #14532d; }
     .turn-actions { display: flex; gap: 8px; }
+    .turn-result { font-size: 20px; font-weight: 800; color: var(--success); }
 
     /* 순위 리스트 */
     .queue-list { list-style: none; padding: 0; margin: 0; }
     .queue-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; border-radius: 8px; margin-bottom: 6px; background: #f8fafc; border: 1px solid var(--border); }
     .rank-num { font-weight: 700; width: 34px; color: var(--primary); font-size: 15px; }
+    .q-name { font-size: 16px; font-weight: 700; color: #1e293b; }
+    .q-time { text-align: right; line-height: 1.25; }
+    .q-elapsed { font-size: 15px; font-weight: 700; color: #334155; font-variant-numeric: tabular-nums; }
+    .q-gap { font-size: 12px; font-weight: 600; color: #94a3b8; font-variant-numeric: tabular-nums; }
+    .empty { color: #94a3b8; text-align: center; padding: 20px; }
 
     /* 점수 현황 카드 리스트 */
     .score-list { list-style: none; padding: 0; margin: 0; max-height: 480px; overflow-y: auto; }
     .score-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; border-bottom: 1px solid #f1f5f9; position: relative; }
     .student-name { font-size: 17px; font-weight: 700; color: #1e293b; }
+    .student-name.offline { color: #94a3b8; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; background: #cbd5e1; flex-shrink: 0; }
+    .dot.on { background: #22c55e; }
     .student-score { font-size: 19px; font-weight: 800; color: var(--primary); margin-right: 12px; }
     .btn-gear { background: transparent; border: none; font-size: 16px; cursor: pointer; padding: 4px; border-radius: 6px; }
     .btn-gear:hover { background: #e2e8f0; }
@@ -110,8 +124,8 @@
     .action-menu.active { display: flex; }
     .action-menu button { font-size: 12px; padding: 6px 10px; justify-content: center; }
 
-    /* QR코드 모달 팝업 */
-    .qr-modal {
+    /* 모달 공통 (QR, PIN) */
+    .modal {
       display: none;
       position: fixed;
       inset: 0;
@@ -121,8 +135,8 @@
       align-items: center;
       justify-content: center;
     }
-    .qr-modal.open { display: flex; }
-    .qr-box {
+    .modal.open { display: flex; }
+    .modal-box {
       background: white;
       border-radius: 24px;
       padding: 32px;
@@ -130,6 +144,7 @@
       box-shadow: 0 20px 40px rgba(0,0,0,0.2);
       max-width: 420px;
       width: 90%;
+      box-sizing: border-box;
       animation: popIn 0.2s ease-out;
     }
     @keyframes popIn {
@@ -137,23 +152,43 @@
       to { transform: scale(1); opacity: 1; }
     }
     .qr-img {
-      width: 280px;
-      height: 280px;
+      width: 300px;
+      height: 300px;
+      max-width: 100%;
       border-radius: 16px;
       border: 1px solid #e2e8f0;
       margin: 16px 0;
       display: inline-block;
+      background: white;
     }
     .qr-url-text {
-      font-size: 15px;
-      font-weight: 700;
+      font-size: 22px;
+      font-weight: 800;
       color: var(--primary);
       word-break: break-all;
       background: #f1f5f9;
-      padding: 10px;
+      padding: 12px;
       border-radius: 8px;
       margin-bottom: 18px;
     }
+
+    /* PIN 화면: 인증 전에는 현황판을 가림 */
+    #pinGate { background: #f1f5f9; backdrop-filter: none; }
+    #pinInput {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 14px;
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: 4px;
+      text-align: center;
+      border-radius: 12px;
+      border: 1.5px solid #cbd5e1;
+      margin: 18px 0 8px;
+      outline: none;
+    }
+    #pinInput:focus { border-color: var(--primary); }
+    .pin-msg { min-height: 20px; font-size: 13px; font-weight: 700; color: var(--danger); margin-bottom: 12px; line-height: 1.5; }
   </style>
 </head>
 <body>
@@ -171,7 +206,7 @@
 
     <div class="toolbar">
       <label style="font-size: 14px; font-weight: 600;">배점:
-        <select id="scoreSelect">
+        <select id="scoreSelect" onchange="changeScore(this.value)">
           <option value="5">5점</option>
           <option value="10" selected>10점</option>
           <option value="20">20점</option>
@@ -183,13 +218,13 @@
       <button class="btn-primary" onclick="openBuzzer()">🔔 새 문제 (부저 열기)</button>
       <button class="btn-danger" onclick="lockBuzzer()">🛑 부저 잠금</button>
 
-      <label style="margin-left: auto; font-size: 14px; font-weight: 600;">표시 인원:
-        <select id="maxRankSelect" onchange="changeMaxDisplay(this.value)">
-          <option value="3">상위 3명</option>
-          <option value="5">상위 5명</option>
-          <option value="10" selected>상위 10명</option>
-          <option value="15">상위 15명</option>
-          <option value="30">상위 30명</option>
+      <label style="margin-left: auto; font-size: 14px; font-weight: 600;">선착순 마감 인원:
+        <select id="cutoffSelect" onchange="changeCutoff(this.value)">
+          <option value="3">3명에서 마감</option>
+          <option value="5">5명에서 마감</option>
+          <option value="10" selected>10명에서 마감</option>
+          <option value="15">15명에서 마감</option>
+          <option value="30">30명에서 마감</option>
         </select>
       </label>
 
@@ -206,17 +241,18 @@
 
         <div id="firstBox" class="turn-box" style="display: none;">
           <div>
-            <div style="font-size: 12px; font-weight: 700; color: #4338ca;">🏆 1순위 정답 기회</div>
+            <div id="firstLabel" class="turn-label">🏆 1순위 정답 기회</div>
             <div id="firstName" class="turn-name">-</div>
           </div>
-          <div class="turn-actions">
-            <button class="btn-primary" style="background: var(--success);" onclick="judge(true)">정답 (+배점)</button>
+          <div id="turnActions" class="turn-actions">
+            <button id="btnCorrect" class="btn-primary" style="background: var(--success);" onclick="judge(true)">정답 (+10점)</button>
             <button class="btn-danger" onclick="judge(false)">오답 (다음 순위로)</button>
           </div>
+          <div id="turnResult" class="turn-result" style="display: none;"></div>
         </div>
 
         <ul id="queueList" class="queue-list">
-          <li style="color: #94a3b8; text-align: center; padding: 20px;">문제를 시작하면 선착순 명단이 여기에 표시됩니다.</li>
+          <li class="empty">문제를 시작하면 선착순 명단이 여기에 표시됩니다.</li>
         </ul>
       </div>
 
@@ -230,158 +266,255 @@
     </div>
   </div>
 
-  <!-- 거대 접속 QR코드 팝업 모달 -->
-  <div id="qrModal" class="qr-modal" onclick="closeQrModal(event)">
-    <div class="qr-box" onclick="event.stopPropagation()">
+  <!-- 학생 접속 QR코드 팝업 -->
+  <div id="qrModal" class="modal" onclick="closeQrModal()">
+    <div class="modal-box" onclick="event.stopPropagation()">
       <h2 style="margin: 0; font-size: 22px; color: #1e293b;">스마트폰으로 카메라를 비춰주세요</h2>
-      <p style="color: #64748b; font-size: 14px; margin: 6px 0 16px 0;">QR코드를 스캔하면 부저 화면으로 바로 연결됩니다.</p>
+      <p style="color: #64748b; font-size: 14px; margin: 6px 0 0 0;">QR코드를 스캔하면 부저 화면으로 바로 연결됩니다.</p>
       <img id="qrImage" class="qr-img" alt="학생 접속용 QR코드" src="" />
-      <div id="qrUrlDisplay" class="qr-url-text">URL 로딩중...</div>
+      <div id="qrUrlDisplay" class="qr-url-text">-</div>
       <button class="btn-primary" style="width: 100%; justify-content: center; padding: 12px; font-size: 16px;" onclick="closeQrModal()">화면 닫기</button>
+    </div>
+  </div>
+
+  <!-- 교사 PIN 인증 -->
+  <div id="pinGate" class="modal open">
+    <div class="modal-box">
+      <div style="font-size: 36px;">🔒</div>
+      <h2 style="margin: 8px 0 0; font-size: 22px; color: #1e293b;">교사 인증</h2>
+      <p style="color: #64748b; font-size: 14px; margin: 6px 0 0;">교사용 PIN을 입력하세요.</p>
+      <input id="pinInput" type="password" autocomplete="off" placeholder="PIN">
+      <div id="pinMsg" class="pin-msg"></div>
+      <button id="pinBtn" class="btn-primary" style="width: 100%; justify-content: center; padding: 12px; font-size: 16px;" onclick="submitPin()">확인</button>
     </div>
   </div>
 
   <script>
     const socket = io();
-    let currentQueue = [];
-    let currentScores = {};
+    const $ = (id) => document.getElementById(id);
+    let state = { isLocked: true, queue: [], scores: {}, online: [], cutoffCount: 10, lastScore: 10, answered: null };
+    let firstState = true;
 
-    // QR코드 팝업 로직
+    // ---------- 교사 PIN 인증 ----------
+    // PIN은 이 탭에만 기억(sessionStorage) → 새로고침해도 다시 묻지 않고, 창을 닫으면 사라짐
+    function getSavedPin() { try { return sessionStorage.getItem('teacher_pin') || ''; } catch (e) { return ''; } }
+    function savePin(pin) {
+      try { pin ? sessionStorage.setItem('teacher_pin', pin) : sessionStorage.removeItem('teacher_pin'); } catch (e) {}
+    }
+    const PIN_ERRORS = {
+      wrong: 'PIN이 올바르지 않습니다.',
+      too_many: '시도 횟수를 초과했습니다. 새로고침 후 다시 시도하세요.',
+      not_configured: '서버에 교사 PIN이 설정되지 않았습니다.<br>Render 대시보드 → Environment에서 TEACHER_PIN을 추가해 주세요.'
+    };
+
+    function login(pin, silent) {
+      $('pinBtn').disabled = true;
+      socket.emit('teacher_login', pin, (res) => {
+        $('pinBtn').disabled = false;
+        if (res && res.ok) {
+          savePin(pin);
+          $('pinGate').classList.remove('open');
+          $('pinMsg').textContent = '';
+          $('pinInput').value = '';
+          return;
+        }
+        savePin('');
+        $('pinGate').classList.add('open');
+        const err = res && res.error;
+        if (!silent || err === 'not_configured') $('pinMsg').innerHTML = PIN_ERRORS[err] || '인증에 실패했습니다.';
+        $('pinInput').focus();
+      });
+    }
+    function submitPin() {
+      const pin = $('pinInput').value.trim();
+      if (!pin) { $('pinMsg').textContent = 'PIN을 입력하세요.'; return; }
+      login(pin, false);
+    }
+    $('pinInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') submitPin(); });
+    $('pinInput').focus();
+
+    // 연결될 때마다(처음, 서버 재시작, 네트워크 재연결) 저장된 PIN으로 자동 재인증
+    socket.on('connect', () => {
+      const pin = getSavedPin();
+      if (pin) login(pin, true);
+    });
+    socket.on('disconnect', (reason) => {
+      if (reason === 'io server disconnect') {
+        $('pinGate').classList.add('open');
+        $('pinMsg').innerHTML = PIN_ERRORS.too_many;
+      }
+    });
+
+    // ---------- QR코드 ----------
     function openQrModal() {
-      const studentUrl = window.location.origin + '/';
-      document.getElementById('qrUrlDisplay').innerText = studentUrl;
-      // Google Chart API로 선명한 350x350 QR코드 즉시 생성
-      document.getElementById('qrImage').src = `https://api.qrserver.com/v1/create-qr-code/?size=350x350&data=${encodeURIComponent(studentUrl)}`;
-      document.getElementById('qrModal').classList.add('open');
+      $('qrUrlDisplay').textContent = window.location.origin + '/';
+      $('qrImage').src = '/qr.svg';
+      $('qrModal').classList.add('open');
+    }
+    function closeQrModal() {
+      $('qrModal').classList.remove('open');
     }
 
-    function closeQrModal(e) {
-      document.getElementById('qrModal').classList.remove('open');
-    }
-
-    socket.emit('teacher_init');
-
-    socket.on('state_update', (data) => {
+    // ---------- 서버 상태 반영 ----------
+    socket.on('teacher_state', (data) => {
+      state = data;
+      if (firstState) {
+        // 새로고침 직후 한 번만 서버에 저장된 선택값으로 복원
+        $('scoreSelect').value = String(data.lastScore);
+        $('cutoffSelect').value = String(data.cutoffCount);
+        firstState = false;
+      }
+      updateCorrectLabel();
       updateLockStatus(data.isLocked);
-      currentQueue = data.buzzerQueue;
-      currentScores = data.scores;
-      document.getElementById('maxRankSelect').value = data.maxDisplayCount;
-      document.getElementById('scoreSelect').value = data.currentQuestionScore;
-      document.getElementById('onlineCount').innerText = data.onlineCount || 0;
+      $('onlineCount').textContent = data.online.length;
       renderQueue();
-      renderScores();
-    });
-
-    socket.on('buzzer_state_change', ({ isLocked }) => updateLockStatus(isLocked));
-    socket.on('queue_updated', (queue) => {
-      currentQueue = queue;
-      renderQueue();
-    });
-    socket.on('scores_updated', (scores) => {
-      currentScores = scores;
-      renderScores();
-    });
-    socket.on('student_list_updated', ({ scores, onlineCount }) => {
-      currentScores = scores;
-      document.getElementById('onlineCount').innerText = onlineCount;
       renderScores();
     });
 
     function updateLockStatus(isLocked) {
-      const badge = document.getElementById('lockBadge');
+      const badge = $('lockBadge');
       if (isLocked) {
-        badge.innerText = '부저 잠김';
+        badge.textContent = '부저 잠김';
         badge.className = 'status-pill pill-locked';
       } else {
-        badge.innerText = '부저 열림 (신호 대기중)';
+        badge.textContent = '부저 열림 (신호 대기중)';
         badge.className = 'status-pill pill-open';
       }
     }
 
-    function renderQueue() {
-      document.getElementById('queueLen').innerText = currentQueue.length;
-      const firstBox = document.getElementById('firstBox');
-      const list = document.getElementById('queueList');
+    function el(tag, className, text) {
+      const node = document.createElement(tag);
+      if (className) node.className = className;
+      if (text !== undefined) node.textContent = text; // 이름은 항상 글자로만 표시 (HTML로 해석하지 않음)
+      return node;
+    }
+    function sec(ms) { return (ms / 1000).toFixed(2) + '초'; }
 
-      if (currentQueue.length > 0) {
+    function renderQueue() {
+      const queue = state.queue;
+      const answered = state.answered;
+      $('queueLen').textContent = queue.length;
+
+      const firstBox = $('firstBox');
+      if (answered) {
         firstBox.style.display = 'flex';
-        document.getElementById('firstName').innerText = currentQueue[0].name;
+        firstBox.classList.add('done');
+        $('firstLabel').textContent = '✅ 정답 처리 완료';
+        $('firstName').textContent = answered.name;
+        $('turnActions').style.display = 'none';
+        $('turnResult').style.display = '';
+        $('turnResult').textContent = `+${answered.point}점`;
+      } else if (queue.length > 0) {
+        firstBox.style.display = 'flex';
+        firstBox.classList.remove('done');
+        $('firstLabel').textContent = '🏆 1순위 정답 기회';
+        $('firstName').textContent = queue[0].name;
+        $('turnActions').style.display = '';
+        $('turnResult').style.display = 'none';
       } else {
         firstBox.style.display = 'none';
       }
 
+      const list = $('queueList');
       list.innerHTML = '';
-      if (currentQueue.length === 0) {
-        list.innerHTML = '<li style="color: #94a3b8; text-align: center; padding: 20px;">문제를 시작하면 선착순 명단이 여기에 표시됩니다.</li>';
+      if (queue.length === 0) {
+        list.appendChild(el('li', 'empty', '문제를 시작하면 선착순 명단이 여기에 표시됩니다.'));
         return;
       }
 
-      currentQueue.forEach((item, idx) => {
-        const li = document.createElement('li');
-        li.className = 'queue-item';
-        li.innerHTML = `
-          <div style="display:flex; align-items:center;">
-            <span class="rank-num">${idx + 1}위</span>
-            <strong style="font-size: 16px; color: ${idx === 0 ? 'var(--primary)' : '#1e293b'}">${item.name}</strong>
-          </div>
-          <span style="font-size: 12px; color: #94a3b8;">${idx === 0 ? '정답 확인 대기' : '대기중'}</span>
-        `;
+      const base = queue[0].elapsed;
+      queue.forEach((item, idx) => {
+        const li = el('li', 'queue-item');
+
+        const left = el('div');
+        left.style.cssText = 'display:flex; align-items:center;';
+        left.appendChild(el('span', 'rank-num', `${idx + 1}위`));
+        const nameEl = el('span', 'q-name', item.name);
+        if (idx === 0) nameEl.style.color = 'var(--primary)';
+        left.appendChild(nameEl);
+
+        const right = el('div', 'q-time');
+        right.appendChild(el('div', 'q-elapsed', `열린 후 ${sec(item.elapsed)}`));
+        right.appendChild(el('div', 'q-gap', idx === 0 ? '기준' : `1등과 +${sec(item.elapsed - base)}`));
+
+        li.appendChild(left);
+        li.appendChild(right);
         list.appendChild(li);
       });
     }
 
     function renderScores() {
-      const list = document.getElementById('scoreList');
+      const list = $('scoreList');
       list.innerHTML = '';
-      const sorted = Object.entries(currentScores).sort((a, b) => b[1] - a[1]);
+      const online = new Set(state.online);
+      const sorted = Object.entries(state.scores).sort((a, b) => b[1] - a[1]);
 
       if (sorted.length === 0) {
-        list.innerHTML = '<li style="color: #94a3b8; text-align: center; padding: 20px;">접속한 학생이 없습니다.</li>';
+        list.appendChild(el('li', 'empty', '접속한 학생이 없습니다.'));
         return;
       }
 
       sorted.forEach(([name, score], idx) => {
-        const li = document.createElement('li');
-        li.className = 'score-item';
-        li.innerHTML = `
-          <div style="display:flex; align-items:center; gap: 8px;">
-            <span style="font-size: 13px; font-weight: 700; color: #94a3b8; width: 20px;">${idx + 1}</span>
-            <span class="student-name">${name}</span>
-          </div>
-          <div style="display:flex; align-items:center;">
-            <span class="student-score">${score}점</span>
-            <button class="btn-gear" onclick="toggleMenu('${name}', event)">⚙️</button>
-            <div id="menu-${name}" class="action-menu">
-              <button class="btn-light" onclick="adjustScore('${name}', 10)">+10점</button>
-              <button class="btn-light" onclick="adjustScore('${name}', -5)">-5점</button>
-              <button class="btn-danger" style="background:#fee2e2; color:#dc2626;" onclick="kickStudent('${name}')">퇴장</button>
-            </div>
-          </div>
-        `;
+        const isOn = online.has(name);
+        const li = el('li', 'score-item');
+
+        const left = el('div');
+        left.style.cssText = 'display:flex; align-items:center; gap: 8px;';
+        const rank = el('span', '', String(idx + 1));
+        rank.style.cssText = 'font-size: 13px; font-weight: 700; color: #94a3b8; width: 20px;';
+        const dot = el('span', isOn ? 'dot on' : 'dot');
+        dot.title = isOn ? '접속 중' : '연결 끊김';
+        left.append(rank, dot, el('span', isOn ? 'student-name' : 'student-name offline', name));
+
+        const right = el('div');
+        right.style.cssText = 'display:flex; align-items:center;';
+        const gear = el('button', 'btn-gear', '⚙️');
+        const menu = el('div', 'action-menu');
+        const plus = el('button', 'btn-light', '+10점');
+        const minus = el('button', 'btn-light', '-5점');
+        const kick = el('button', 'btn-danger', '퇴장');
+        kick.style.cssText = 'background:#fee2e2; color:#dc2626;';
+        plus.onclick = () => adjustScore(name, 10);
+        minus.onclick = () => adjustScore(name, -5);
+        kick.onclick = () => kickStudent(name);
+        gear.onclick = (e) => {
+          e.stopPropagation();
+          const wasOpen = menu.classList.contains('active');
+          closeMenus();
+          if (!wasOpen) menu.classList.add('active');
+        };
+        menu.append(plus, minus, kick);
+        right.append(el('span', 'student-score', `${score}점`), gear, menu);
+
+        li.append(left, right);
         list.appendChild(li);
       });
     }
 
-    function toggleMenu(name, event) {
-      event.stopPropagation();
+    function closeMenus() {
       document.querySelectorAll('.action-menu').forEach(m => m.classList.remove('active'));
-      const menu = document.getElementById(`menu-${name}`);
-      if (menu) menu.classList.add('active');
     }
+    document.addEventListener('click', closeMenus);
 
-    document.addEventListener('click', () => {
-      document.querySelectorAll('.action-menu').forEach(m => m.classList.remove('active'));
-    });
-
-    function openBuzzer() {
-      const score = document.getElementById('scoreSelect').value;
-      socket.emit('open_buzzer', score);
+    // ---------- 교사 조작 ----------
+    function updateCorrectLabel() {
+      $('btnCorrect').textContent = `정답 (+${$('scoreSelect').value}점)`;
     }
+    function changeScore(val) {
+      updateCorrectLabel();
+      socket.emit('set_score', val);
+    }
+    function openBuzzer() { socket.emit('open_buzzer'); }
     function lockBuzzer() { socket.emit('lock_buzzer'); }
-    function changeMaxDisplay(val) { socket.emit('set_max_display', val); }
+    function changeCutoff(val) { socket.emit('set_cutoff', val); }
     function judge(isCorrect) {
-      const score = document.getElementById('scoreSelect').value;
-      socket.emit('judge_first_student', { isCorrect, score });
+      if (!state.queue.length) return;
+      // 클릭하는 순간 선택돼 있는 배점 + 화면에 보이는 1순위 이름을 함께 보냄
+      socket.emit('judge_first_student', {
+        isCorrect,
+        score: $('scoreSelect').value,
+        name: state.queue[0].name
+      });
     }
     function adjustScore(name, delta) { socket.emit('manual_score_adjust', { name, delta }); }
     function kickStudent(name) {

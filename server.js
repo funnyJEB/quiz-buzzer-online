@@ -2,184 +2,306 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
+const QRCode = require('qrcode');
 
 const app = express();
+app.set('trust proxy', true); // Render 프록시 뒤에서도 https 주소를 올바르게 인식
 const server = http.createServer(app);
-const io = new Server(server, { cors: { origin: '*' } });
+const io = new Server(server);
+
+// ===== 설정 =====
+// 교사 PIN은 코드에 적지 않고 Render 환경변수(TEACHER_PIN)로 설정합니다.
+const TEACHER_PIN = String(process.env.TEACHER_PIN || '').trim();
+const NAME_MAX = 12;        // 닉네임 최대 글자 수
+const MAX_PIN_TRIES = 5;    // 한 연결에서 PIN을 틀릴 수 있는 횟수
+
+if (!TEACHER_PIN) {
+  console.warn('[경고] TEACHER_PIN 환경변수가 없습니다. 교사 화면에 로그인할 수 없습니다.');
+}
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+// 학생 접속용 QR코드 (외부 사이트 없이 서버에서 직접 생성)
+app.get('/qr.svg', async (req, res) => {
+  try {
+    const url = `${req.protocol}://${req.get('host')}/`;
+    const svg = await QRCode.toString(url, { type: 'svg', margin: 1, errorCorrectionLevel: 'M' });
+    res.type('image/svg+xml').set('Cache-Control', 'no-cache').send(svg);
+  } catch (err) {
+    console.error('[qr]', err);
+    res.status(500).end();
+  }
 });
 
-let buzzerQueue = [];
+// ===== 게임 상태 =====
+let scores = {};        // 닉네임 -> 점수
+let nameOwner = {};     // 닉네임 -> 기기 ID
+let deviceName = {};    // 기기 ID -> 닉네임
+let deviceSocket = {};  // 기기 ID -> 현재 연결된 socket.id (기기당 하나)
+let buzzerQueue = [];   // [{ name, elapsed }]  elapsed: 부저가 열린 뒤 누르기까지 걸린 시간(ms)
 let isLocked = true;
-let scores = {};
-let connectedStudents = {};
-let maxDisplayCount = 10;
-let currentQuestionScore = 10;
+let openedAt = 0;
+let answered = null;    // 이번 문제 정답 처리 결과 { name, point }
+let cutoffCount = 10;   // 선착순 마감 인원
+let lastScore = 10;     // 교사 화면에서 마지막으로 고른 배점 (새로고침 시 복원용)
+
+// ===== 입력값 검사 =====
+function cleanName(v) {
+  if (typeof v !== 'string') return null;
+  const name = v.replace(/[\u0000-\u001f\u007f]/g, '').replace(/\s+/g, ' ').trim();
+  const len = Array.from(name).length;
+  return len >= 1 && len <= NAME_MAX ? name : null;
+}
+function cleanDeviceId(v) {
+  return typeof v === 'string' && /^[A-Za-z0-9_-]{8,64}$/.test(v) ? v : null;
+}
+function cleanInt(v, min, max) {
+  const n = Number(v);
+  return Number.isInteger(n) && n >= min && n <= max ? n : null;
+}
+
+// ===== 도우미 =====
+function socketOfName(name) {
+  const dev = nameOwner[name];
+  const sid = dev && deviceSocket[dev];
+  return sid ? io.sockets.sockets.get(sid) || null : null;
+}
+function sendToStudent(name, event, data) {
+  const s = socketOfName(name);
+  if (s) s.emit(event, data);
+}
+function onlineNames() {
+  return Object.keys(deviceSocket).map(dev => deviceName[dev]).filter(Boolean);
+}
+function teacherState() {
+  return {
+    isLocked,
+    queue: buzzerQueue,
+    scores,
+    online: onlineNames(),
+    cutoffCount,
+    lastScore,
+    answered
+  };
+}
+function pushTeacher() {
+  io.to('teachers').emit('teacher_state', teacherState());
+}
+function studentBuzzerState(name) {
+  const idx = buzzerQueue.findIndex(b => b.name === name);
+  return { isLocked, hasBuzzed: idx !== -1, rank: idx !== -1 ? idx + 1 : null };
+}
+function setLocked(locked) {
+  if (isLocked === locked) return;
+  isLocked = locked;
+  io.emit('buzzer_state_change', { isLocked });
+}
+function dropSocket(s, event) {
+  if (!s) return;
+  s.data.name = null;
+  s.data.deviceId = null;
+  if (event) s.emit(event);
+  s.disconnect(true);
+}
 
 io.on('connection', (socket) => {
-  // 교사 초기 연결
-  socket.on('teacher_init', () => {
-    socket.emit('state_update', {
-      isLocked,
-      buzzerQueue,
-      scores,
-      maxDisplayCount,
-      currentQuestionScore,
-      onlineCount: Object.keys(connectedStudents).length
+  // 이벤트 처리 중 에러가 나도 서버가 꺼지지 않도록 감쌈
+  const on = (event, handler) => {
+    socket.on(event, (...args) => {
+      try { handler(...args); } catch (err) { console.error(`[${event}]`, err); }
     });
+  };
+  // 교사 인증을 통과한 연결만 처리
+  const onTeacher = (event, handler) => {
+    on(event, (...args) => { if (socket.data.isTeacher) handler(...args); });
+  };
+  const replyOf = (ack) => (typeof ack === 'function' ? ack : () => {});
+
+  // ---------- 교사 로그인 ----------
+  on('teacher_login', (pin, ack) => {
+    const reply = replyOf(ack);
+    if (!TEACHER_PIN) return reply({ ok: false, error: 'not_configured' });
+    socket.data.pinTries = (socket.data.pinTries || 0) + 1;
+    if (socket.data.pinTries > MAX_PIN_TRIES) {
+      reply({ ok: false, error: 'too_many' });
+      socket.disconnect(true);
+      return;
+    }
+    if (typeof pin !== 'string' || pin.trim() !== TEACHER_PIN) {
+      setTimeout(() => reply({ ok: false, error: 'wrong' }), 600); // 무작위 대입 속도 늦추기
+      return;
+    }
+    socket.data.isTeacher = true;
+    socket.data.pinTries = 0;
+    socket.join('teachers');
+    reply({ ok: true });
+    socket.emit('teacher_state', teacherState());
   });
 
-  // 학생 등록 및 재접속
-  socket.on('register_student', (name) => {
-    const trimmedName = name.trim();
-    socket.studentName = trimmedName;
-    connectedStudents[socket.id] = trimmedName;
+  // ---------- 학생 등록 / 재접속 ----------
+  on('register_student', (payload, ack) => {
+    const reply = replyOf(ack);
+    const name = cleanName(payload && payload.name);
+    const deviceId = cleanDeviceId(payload && payload.deviceId);
+    if (!deviceId) return reply({ ok: false, error: '접속 정보를 확인할 수 없어요. 새로고침해 주세요.' });
+    if (!name) return reply({ ok: false, error: `닉네임은 1~${NAME_MAX}자로 입력해 주세요.` });
 
-    if (scores[trimmedName] === undefined) {
-      scores[trimmedName] = 0;
+    const owner = nameOwner[name];
+    if (owner && owner !== deviceId) {
+      return reply({ ok: false, error: '이미 사용 중인 닉네임이에요. 다른 닉네임을 입력해 주세요.' });
     }
 
-    socket.emit('score_update', scores[trimmedName]);
-    const buzzedIndex = buzzerQueue.findIndex(b => b.name === trimmedName);
-    socket.emit('buzzer_state', {
-      isLocked,
-      hasBuzzed: buzzedIndex !== -1,
-      rank: buzzedIndex !== -1 ? buzzedIndex + 1 : null
-    });
-
-    io.emit('student_list_updated', {
-      scores,
-      onlineCount: Object.keys(connectedStudents).length
-    });
-  });
-
-  // 부저 클릭
-  socket.on('press_buzzer', () => {
-    if (isLocked || !socket.studentName) return;
-    if (buzzerQueue.some(b => b.name === socket.studentName)) return;
-
-    const rank = buzzerQueue.length + 1;
-    buzzerQueue.push({
-      id: socket.id,
-      name: socket.studentName,
-      time: Date.now(),
-      rank
-    });
-
-    socket.emit('buzzer_result', { rank, isFirst: rank === 1 });
-    io.emit('queue_updated', buzzerQueue);
-
-    if (buzzerQueue.length >= maxDisplayCount) {
-      isLocked = true;
-      io.emit('buzzer_state_change', { isLocked: true });
+    // 이 기기가 다른 닉네임을 쓰고 있었다면 → 닉네임 변경 (점수 이어받기)
+    const prevName = deviceName[deviceId];
+    if (prevName && prevName !== name) {
+      scores[name] = scores[prevName] || 0;
+      delete scores[prevName];
+      delete nameOwner[prevName];
+      buzzerQueue.forEach(b => { if (b.name === prevName) b.name = name; });
+      if (answered && answered.name === prevName) answered.name = name;
     }
+
+    // 같은 기기의 다른 창(탭) 연결은 끊음 → 기기당 접속 하나
+    const prevSid = deviceSocket[deviceId];
+    if (prevSid && prevSid !== socket.id) {
+      dropSocket(io.sockets.sockets.get(prevSid), 'duplicate_session');
+    }
+
+    socket.data.name = name;
+    socket.data.deviceId = deviceId;
+    nameOwner[name] = deviceId;
+    deviceName[deviceId] = name;
+    deviceSocket[deviceId] = socket.id;
+    if (scores[name] === undefined) scores[name] = 0;
+
+    reply({ ok: true, name, score: scores[name], ...studentBuzzerState(name) });
+    pushTeacher();
   });
 
-  // 새 문제 시작 (부저 열기)
-  socket.on('open_buzzer', (score) => {
+  // ---------- 부저 누르기 ----------
+  on('press_buzzer', (ack) => {
+    const reply = replyOf(ack);
+    const name = socket.data.name;
+    if (!name || nameOwner[name] !== socket.data.deviceId) return reply({ ok: false });
+    if (isLocked) return reply({ ok: false, locked: true });
+
+    const existing = buzzerQueue.findIndex(b => b.name === name);
+    if (existing !== -1) return reply({ ok: true, rank: existing + 1 });
+
+    buzzerQueue.push({ name, elapsed: Date.now() - openedAt });
+    reply({ ok: true, rank: buzzerQueue.length });
+
+    if (buzzerQueue.length >= cutoffCount) setLocked(true);
+    pushTeacher();
+  });
+
+  // ---------- 교사 기능 ----------
+  onTeacher('open_buzzer', () => {
     buzzerQueue = [];
+    answered = null;
     isLocked = false;
-    currentQuestionScore = parseInt(score, 10) || 10;
-    io.emit('buzzer_reset');
-    io.emit('buzzer_state_change', { isLocked: false, score: currentQuestionScore });
+    openedAt = Date.now();
+    io.emit('buzzer_state_change', { isLocked: false, fresh: true });
+    pushTeacher();
   });
 
-  // 수동 부저 잠금
-  socket.on('lock_buzzer', () => {
-    isLocked = true;
-    io.emit('buzzer_state_change', { isLocked: true });
+  onTeacher('lock_buzzer', () => {
+    setLocked(true);
+    pushTeacher();
   });
 
-  // 선착순 인원수 설정
-  socket.on('set_max_display', (count) => {
-    maxDisplayCount = parseInt(count, 10) || 10;
-    io.emit('max_display_updated', maxDisplayCount);
+  onTeacher('set_cutoff', (count) => {
+    const n = cleanInt(count, 1, 200);
+    if (n === null) return;
+    cutoffCount = n;
+    if (!isLocked && buzzerQueue.length >= cutoffCount) setLocked(true);
+    pushTeacher();
   });
 
-  // 정답 판정 (1순위)
-  socket.on('judge_first_student', ({ isCorrect, score }) => {
-    if (buzzerQueue.length === 0) return;
+  onTeacher('set_score', (score) => {
+    const n = cleanInt(score, 1, 1000);
+    if (n !== null) lastScore = n;
+  });
+
+  // 1순위 판정: 교사 화면에 보이던 1순위 이름(name)과 서버의 1순위가 같을 때만 처리
+  // → 버튼을 두 번 눌러도 점수가 두 번 들어가거나 두 명이 넘어가지 않음
+  onTeacher('judge_first_student', (payload) => {
+    const { isCorrect, score, name } = payload || {};
+    if (answered || buzzerQueue.length === 0) return;
     const target = buzzerQueue[0];
-    const point = parseInt(score, 10);
+    if (name !== target.name) return;
 
     if (isCorrect) {
+      const point = cleanInt(score, 1, 1000); // 클릭하는 순간 선택돼 있던 배점
+      if (point === null) return;
+      lastScore = point;
       scores[target.name] = (scores[target.name] || 0) + point;
-      isLocked = true;
-      io.emit('buzzer_state_change', { isLocked: true });
+      answered = { name: target.name, point };
+      setLocked(true);
+      sendToStudent(target.name, 'score_update', scores[target.name]);
     } else {
       buzzerQueue.shift();
-      buzzerQueue.forEach((item, idx) => item.rank = idx + 1);
     }
-
-    io.emit('scores_updated', scores);
-    io.emit('queue_updated', buzzerQueue);
-    sendScoreToStudent(target.name);
+    pushTeacher();
   });
 
-  // 개별 점수 조정
-  socket.on('manual_score_adjust', ({ name, delta }) => {
-    if (scores[name] !== undefined) {
-      scores[name] += delta;
-      io.emit('scores_updated', scores);
-      sendScoreToStudent(name);
-    }
+  onTeacher('manual_score_adjust', (payload) => {
+    const { name, delta } = payload || {};
+    const d = cleanInt(delta, -1000, 1000);
+    if (d === null || typeof name !== 'string' || scores[name] === undefined) return;
+    scores[name] += d;
+    sendToStudent(name, 'score_update', scores[name]);
+    pushTeacher();
   });
 
-  // 개별 학생 강퇴
-  socket.on('kick_student', (targetName) => {
-    for (const [id, s] of io.of('/').sockets) {
-      if (s.studentName === targetName) {
-        s.emit('force_kicked');
-        s.disconnect(true);
+  onTeacher('kick_student', (name) => {
+    if (typeof name !== 'string') return;
+    const dev = nameOwner[name];
+    if (dev) {
+      const sid = deviceSocket[dev];
+      dropSocket(sid && io.sockets.sockets.get(sid), 'force_kicked');
+      delete deviceSocket[dev];
+      delete deviceName[dev];
+    }
+    delete nameOwner[name];
+    delete scores[name];
+    buzzerQueue = buzzerQueue.filter(b => b.name !== name);
+    pushTeacher();
+  });
+
+  onTeacher('reset_all_scores', () => {
+    for (const name in scores) {
+      scores[name] = 0;
+      sendToStudent(name, 'score_update', 0);
+    }
+    pushTeacher();
+  });
+
+  onTeacher('start_new_game', () => {
+    for (const s of io.sockets.sockets.values()) {
+      if (s.data.name) {
+        s.data.name = null;
+        s.data.deviceId = null;
+        s.emit('force_game_restart');
       }
     }
-    delete scores[targetName];
-    buzzerQueue = buzzerQueue.filter(b => b.name !== targetName);
-    io.emit('scores_updated', scores);
-    io.emit('queue_updated', buzzerQueue);
-  });
-
-  // 점수만 리셋 (이어하기)
-  socket.on('reset_all_scores', () => {
-    for (const name in scores) scores[name] = 0;
-    io.emit('scores_updated', scores);
-    io.emit('all_scores_reset');
-    for (const [id, s] of io.of('/').sockets) {
-      if (s.studentName) s.emit('score_update', 0);
-    }
-  });
-
-  // 새 게임 시작 (완전 초기화 및 전체 퇴장)
-  socket.on('start_new_game', () => {
     scores = {};
+    nameOwner = {};
+    deviceName = {};
+    deviceSocket = {};
     buzzerQueue = [];
-    isLocked = true;
-    connectedStudents = {};
-    io.emit('force_game_restart');
-    io.emit('scores_updated', scores);
-    io.emit('queue_updated', buzzerQueue);
-    io.emit('buzzer_state_change', { isLocked: true });
+    answered = null;
+    setLocked(true);
+    pushTeacher();
   });
 
-  socket.on('disconnect', () => {
-    delete connectedStudents[socket.id];
-    io.emit('student_list_updated', {
-      scores,
-      onlineCount: Object.keys(connectedStudents).length
-    });
-  });
-
-  function sendScoreToStudent(name) {
-    for (const [id, s] of io.of('/').sockets) {
-      if (s.studentName === name) {
-        s.emit('score_update', scores[name]);
-      }
+  on('disconnect', () => {
+    const dev = socket.data.deviceId;
+    if (dev && deviceSocket[dev] === socket.id) {
+      delete deviceSocket[dev];
+      pushTeacher();
     }
-  }
+  });
 });
 
 const PORT = process.env.PORT || 3000;
